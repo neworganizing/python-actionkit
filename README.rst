@@ -1,0 +1,1 @@
+python-actionkit is a python interface to the ActionKit ECRM. The goal is to provide simple access to ActionKid via the the REST and XML-RPC APIs as well as the Django ORM
