@@ -1,6 +1,12 @@
 from django.db import models
 
+from actionkit import ActionKitGeneralError
+
 class _akit_model(models.Model):
+
+    def save(self, **kwargs):
+        raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
+
     class Meta:
         abstract = True
         managed = False
@@ -46,6 +52,7 @@ class CoreAction(_akit_model):
     referring_mailing = models.ForeignKey('CoreMailing', related_name='referred_actions', null=True, blank=True)
     taf_emails_sent = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=765)
+    ip_address = models.IPAddressField()
     
     def fields(self):
         return CoreActionfield.objects.filter(parent_id=self)
@@ -68,6 +75,7 @@ class ReportsReport(_akit_model):
         db_table = u'reports_report'
 
 class CoreDonationpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     minimum_amount = models.DecimalField(max_digits=12, decimal_places=2)
     payment_account = models.CharField(max_length=765)
     hpc_rule = models.ForeignKey('CoreDonationHpcRule', null=True, blank=True)
@@ -356,6 +364,7 @@ class CmsPetitionForm(_akit_model):
         db_table = u'cms_petition_form'
 
 class CmsRecurringdonationForm(CmsDonationForm):
+    donationform = models.OneToOneField(CmsDonationForm, parent_link=True, db_column='donationform_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'cms_recurringdonation_form'
 
@@ -600,6 +609,7 @@ class CoreBuiltintranslation(_akit_model):
         db_table = u'core_builtintranslation'
 
 class CoreCallaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction'
 
@@ -616,6 +626,7 @@ class CoreCallactionTargeted(_akit_model):
         db_table = u'core_callaction_targeted'
 
 class CoreCallpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     constituents_only_url = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_callpage'
@@ -644,13 +655,18 @@ class CoreCandidateTags(_akit_model):
         db_table = u'core_candidate_tags'
 
 class CoreClick(_akit_model):
+    '''
+    Notice: As there is no primary key on the core_click and core_open tables
+    we instead need to assign a primary key on an existing field.
+    This may cause problems with some ORM functions, so keep an eye out for this.
+    '''
     clickurl_id = models.IntegerField()
     user_id = models.IntegerField(null=True, blank=True)
     mailing_id = models.IntegerField(null=True, blank=True)
     link_number = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=765, blank=True)
     referring_user_id = models.IntegerField(null=True, blank=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(primary_key=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_click'
 
@@ -669,6 +685,7 @@ class CoreClientdomain(_akit_model):
         db_table = u'core_clientdomain'
 
 class CoreCongresstargetgroup(CoreTargetgroup):
+    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id')
     include_republicans = models.IntegerField()
     include_democrats = models.IntegerField()
     include_independents = models.IntegerField()
@@ -713,14 +730,17 @@ class CoreDonationHpcRuleExcludeTags(_akit_model):
         db_table = u'core_donation_hpc_rule_exclude_tags'
 
 class CoreDonationaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationaction'
 
 class CoreDonationcancellationaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationcancellationaction'
 
 class CoreDonationcancellationpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationcancellationpage'
 
@@ -737,10 +757,12 @@ class CoreDonationpageProducts(_akit_model):
         db_table = u'core_donationpage_products'
 
 class CoreDonationupdateaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationupdateaction'
 
 class CoreDonationupdatepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationupdatepage'
 
@@ -768,22 +790,26 @@ class CoreEmailwrapper(_akit_model):
         db_table = u'core_emailwrapper'
 
 class CoreEventcreateaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     event = models.ForeignKey('EventsEvent')
     class Meta(_akit_model.Meta):
         db_table = u'core_eventcreateaction'
 
 class CoreEventcreatepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     campaign = models.ForeignKey('EventsCampaign')
     campaign_title = models.CharField(max_length=765, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_eventcreatepage'
 
 class CoreEventsignupaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     signup = models.ForeignKey('EventsEventsignup')
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignupaction'
 
 class CoreEventsignuppage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     campaign = models.ForeignKey('EventsCampaign')
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignuppage'
@@ -812,10 +838,12 @@ class CoreHostingplatform(_akit_model):
         db_table = u'core_hostingplatform'
 
 class CoreImportaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_importaction'
 
 class CoreImportpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     subscribe = models.IntegerField()
     default_source = models.CharField(max_length=765, blank=True)
     unsubscribe_all = models.IntegerField(null=True, blank=True)
@@ -835,6 +863,7 @@ class CoreLanguage(_akit_model):
         db_table = u'core_language'
 
 class CoreLetteraction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_letteraction'
 
@@ -845,6 +874,7 @@ class CoreLetteractionTargeted(_akit_model):
         db_table = u'core_letteraction_targeted'
 
 class CoreLetterpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     send_immediate_fax = models.IntegerField()
     send_immediate_email = models.IntegerField()
     immediate_email_subject = models.CharField(max_length=765)
@@ -885,6 +915,7 @@ class CoreLocation(_akit_model):
         db_table = u'core_location'
 
 class CoreLteaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     subject = models.CharField(max_length=240)
     letter_text = models.TextField()
     target = models.ForeignKey('CoreMediatarget', null=True, blank=True)
@@ -892,6 +923,7 @@ class CoreLteaction(CoreAction):
         db_table = u'core_lteaction'
 
 class CoreLtepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     national_newspapers = models.IntegerField()
     regional_newspapers = models.IntegerField()
     local_newspapers = models.IntegerField()
@@ -945,7 +977,6 @@ class CoreMailingtargeting(_akit_model):
     zips = models.TextField(blank=True)
     zip_radius = models.IntegerField(null=True, blank=True)
     counties = models.TextField(blank=True)
-    tags = models.TextField(blank=True)
     has_donated = models.IntegerField()
     is_monthly_donor = models.IntegerField()
     activity_level = models.ForeignKey('CoreActivityleveltargetingoption', null=True, blank=True)
@@ -1053,9 +1084,14 @@ class CoreMultilingualcampaign(_akit_model):
         db_table = u'core_multilingualcampaign'
 
 class CoreOpen(_akit_model):
+    '''
+    Notice: As there is no primary key on the core_click and core_open tables
+    we instead need to assign a primary key on an existing field.
+    This may cause problems with some ORM functions, so keep an eye out for this.
+    '''
     user_id = models.IntegerField(null=True, blank=True)
     mailing_id = models.IntegerField(null=True, blank=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(primary_key=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_open'
 
@@ -1139,8 +1175,6 @@ class CoreOrderrecurring(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'core_orderrecurring'
 
-
-
 class CorePageRequiredFields(_akit_model):
     page = models.ForeignKey('CorePage', unique=True)
     formfield = models.ForeignKey('CoreFormfield')
@@ -1191,6 +1225,7 @@ class CorePagetargetchange(_akit_model):
         db_table = u'core_pagetargetchange'
 
 class CorePetitionaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionaction'
 
@@ -1233,6 +1268,7 @@ class CorePetitiondeliveryjobTargetGroups(_akit_model):
         db_table = u'core_petitiondeliveryjob_target_groups'
 
 class CorePetitionpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     send_immediate_fax = models.IntegerField()
     send_immediate_email = models.IntegerField()
     immediate_email_subject = models.CharField(max_length=765)
@@ -1299,26 +1335,32 @@ class CoreProductTags(_akit_model):
         db_table = u'core_product_tags'
 
 class CoreRecurringdonationaction(CoreDonationaction):
+    donationaction = models.OneToOneField(CoreDonationaction, parent_link=True, db_column='donationaction_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationaction'
 
 class CoreRecurringdonationcancelaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationcancelaction'
 
 class CoreRecurringdonationcancelpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationcancelpage'
 
 class CoreRecurringdonationpage(CoreDonationpage):
+    donationpage = models.OneToOneField(CoreDonationpage, parent_link=True, db_column='donationpage_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationpage'
 
 class CoreRecurringdonationupdateaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationupdateaction'
 
 class CoreRecurringdonationupdatepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     minimum_amount = models.DecimalField(max_digits=12, decimal_places=2)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationupdatepage'
@@ -1337,10 +1379,12 @@ class CoreRedirect(_akit_model):
         db_table = u'core_redirect'
 
 class CoreRedirectaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_redirectaction'
 
 class CoreRedirectpage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_redirectpage'
 
@@ -1362,19 +1406,23 @@ class CoreSentadhocmail(_akit_model):
         db_table = u'core_sentadhocmail'
 
 class CoreSignupaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_signupaction'
 
 class CoreSignuppage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_signuppage'
 
 class CoreSpecialtarget(CoreTarget):
+    target = models.OneToOneField(CoreTarget, parent_link=True, db_column='target_ptr_id')
     body = models.ForeignKey('CoreSpecialtargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_specialtarget'
 
 class CoreSpecialtargetgroup(CoreTargetgroup):
+    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_specialtargetgroup'
 
@@ -1405,10 +1453,12 @@ class CoreSubscriptionhistory(_akit_model):
         db_table = u'core_subscriptionhistory'
 
 class CoreSurveyaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_surveyaction'
 
 class CoreSurveypage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_surveypage'
 
@@ -1521,10 +1571,12 @@ class CoreUnsubEmailState(_akit_model):
         db_table = u'core_unsub_email_state'
 
 class CoreUnsubscribeaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_unsubscribeaction'
 
 class CoreUnsubscribepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     use_in_mail_wrapper = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_unsubscribepage'
@@ -1665,10 +1717,12 @@ class CoreUseroriginal(_akit_model):
         db_table = u'core_useroriginal'
 
 class CoreUserupdateaction(CoreAction):
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_userupdateaction'
 
 class CoreUserupdatepage(CorePage):
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id')
     class Meta(_akit_model.Meta):
         db_table = u'core_userupdatepage'
 
@@ -1793,11 +1847,13 @@ class EventsEventsignupfield(_akit_model):
         db_table = u'events_eventsignupfield'
 
 class ReportsDashboardreport(ReportsReport):
+    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id')
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_dashboardreport'
 
 class ReportsQueryreport(ReportsReport):
+    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id')
     sql = models.TextField()
     display_as = models.ForeignKey('ReportsQuerytemplate')
     email_always_csv = models.IntegerField(null=True, blank=True)
@@ -1812,8 +1868,6 @@ class ReportsQuerytemplate(_akit_model):
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_querytemplate'
-
-
 
 class ReportsReportCategories(_akit_model):
     report = models.ForeignKey('ReportsReport', unique=True)
