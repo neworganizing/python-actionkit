@@ -24,7 +24,7 @@ To use the API key authentication use::
     ak = ActionKit(instance='act.yourdomain.com', username='yourusername', api_key='abcd123123123')
 
 
-To use guess access, use::
+To use guest access, use::
 
     from actionkit import ActionKit
     ak = ActionKit(instance='act.yourdomain.com')
