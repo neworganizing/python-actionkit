@@ -9,6 +9,33 @@ from actionkit.errors import *
 
 class ActionKit(object):
     def __init__(self, **kwargs):
+        '''Initialize the instance with the given parameters.
+
+        Available kwargs
+
+        All Authentication Mechanisms & Guest Access:
+
+        * instance -- The hostname of your ActionKit instance. Usually 'act.yourdomain.com'
+
+        Password Authentication:
+
+        * username -- the ActionKit username to use for authentication
+        * password -- the password for the username
+
+        API Token Authentication:
+
+        * username -- the ActionKit username to use for authentication
+        * api_key -- the API key for the username. This is usually found in the user's detail page
+
+        Guest Access:
+
+        For guest access all that is required is the instance/hostname
+
+        Universal Kwargs:
+
+        * version -- the ActionKit version to use. Defaults to v1
+
+        '''
         self.version = kwargs.get('version', 'v1')
 
         if 'instance' not in kwargs:
@@ -80,6 +107,17 @@ class ActionKit(object):
         return result.json()
 
     def run_report(self, report, **kwargs):
+        '''Immediately run a specific report
+
+        This command will return a report immediately (so it may take a bit of time)
+        Pass the report name as the first argument and then use kwargs to pass in
+        fields to the report
+
+        Arguments:
+
+        * report -- Name of the report
+
+        '''
         data = kwargs
         url = '{base_url}report/run/{report_name}/'.format(
             base_url=self.base_url, report_name=report)
@@ -89,6 +127,16 @@ class ActionKit(object):
         return result.json()
 
     def run_bgreport(self, report, **kwargs):
+        '''Queue a report then grab the results
+
+        Nearly identical to the run_report method, this method will queue a report
+        then immediately attempt to grab the result.
+
+        This is most useful when you want to run a report that ActionKit feels is too intensive
+        to be run in real-time.
+
+        '''
+
         data = kwargs
         url = '{base_url}report/background/{report_name}/'.format(
             base_url=self.base_url, report_name=report)
@@ -102,6 +150,10 @@ class ActionKit(object):
 
 class AKResource(object):
     def __init__(self, resource_name, instance, headers, version='v1'):
+        ''' AKReporce is a stand-in for a specific type of resource (User, Action, Page, etc)
+        and allows you to perform actions on that resource.
+        '''
+
         self.resource_name = resource_name
         self.base_url = "https://{instance}/rest/{version}/{resource_name}/".format(
             instance=instance, version=version, resource_name=resource_name)
@@ -120,33 +172,83 @@ class AKResource(object):
         return result
 
     def schema(self):
+        '''Method that returns the schema for the object type
+
+        Returns a dictionary of the JSON schema
+        '''
         result = self._call_actionkit('GET', self.base_url + 'schema')
         return result.json()
 
     def get(self, id):
+        '''Method that returns a dictionary of a single record
+
+        Arguments:
+
+        * id -- The ID/Primary Key of a record you wish to get
+
+        '''
         result = self._call_actionkit('GET', self.base_url + str(id))
         return result.json()
 
     def list(self, **kwargs):
+        '''Allows listing/finding of existing records
+
+        The kwargs passed to list() translate directly into query strings
+
+        To find 50 users who are in the state of Wisconsin or Illinois, offset by 50, you'd use this:
+
+        ak.user.list(state__in=['WI','IL'],_offset=50, _limit=50)
+
+        Which would send a GET request to /user/?state=WI&state=IL&_offset=50&_limit=50
+
+        '''
         result = self._call_actionkit(
             'GET', self.base_url + '?' + urllib.urlencode(kwargs, True))
         return result.json()
 
     def create(self, data):
+        '''Creates a new record
+
+        Arguments:
+
+        * data -- A dictionary of data you wish to associate with the new record
+
+        '''
         result = self._call_actionkit(
             'POST', self.base_url, data=json.dumps(data))
-        return result.json()
+        try:
+            return result.json()
+        except ValueError:
+            return result.status_code
 
     def delete(self, id):
+        '''Deletes a record
+
+        Arguments:
+
+        * id -- The ID/Primary Key of the record you wish to delete
+
+        '''
         result = self._call_actionkit('DELETE', self.base_url + str(id))
         return result.status_code
 
     def update(self, id, data):
+        '''Updates an existing ActionKit record
+
+        Arguments:
+
+        * id -- ID/Primary Key of the record you wish to update
+        * data -- Dictionary of the data you wish to overwrite the existing record with
+
+        '''
         result = self._call_actionkit(
             'PUT', self.base_url + str(id), data=json.dumps(data))
         return result.json()
 
 def _exception_handler(result):
+    ''' A handler that will return the correct exception based on the error
+    thrown by ActionKit
+    '''
     url = result.url
     try:
         response_content = result.json()
