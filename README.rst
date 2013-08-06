@@ -67,7 +67,7 @@ Then to pull a dictionary containing the details from User #1 simply use the com
 Django ORM
 ----------
 
-ActionKit is based on Django 1.1 and conviently provides clients direct SQL access to a MySQL Slave. Taking advantage of these two things allows access to client data with minimal latency as well as considerable development speed advantages.
+ActionKit is based on Django 1.1 and conveniently provides clients direct SQL access to a MySQL Slave. Taking advantage of these two things allows access to client data with minimal latency as well as considerable development speed advantages.
 
 To pull a ``CoreUser`` object representing the user if the ID 1, first ensure that your actionkit database details are defined in your ``settings.py`` ``DATABASES`` dictionary, then request the CoreUser object using the id::
 
