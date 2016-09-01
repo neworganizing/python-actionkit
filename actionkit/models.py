@@ -5,7 +5,11 @@ from actionkit import ActionKitGeneralError
 class _akit_model(models.Model):
 
     def save(self, **kwargs):
-        raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
+        save_mode = getattr(settings, 'AK_SAVE_MODE', 'error')
+        if save_mode == 'error':
+            raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
+        elif save_mode == 'api' and hasattr(self, 'api_save'):
+            self.api_save(**kwargs)
 
     class Meta:
         abstract = True
@@ -30,7 +34,7 @@ class CorePage(_akit_model):
     def fields(self):
         return CorePagefield.objects.filter(parent_id=self)
     
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     class Meta(_akit_model.Meta):
@@ -42,7 +46,7 @@ class CoreAction(_akit_model):
     updated_at = models.DateTimeField()
     user = models.ForeignKey('CoreUser', related_name='actions')
     mailing = models.ForeignKey('CoreMailing', related_name='actions', null=True, blank=True)
-    page = models.ForeignKey('CorePage')
+    page = models.ForeignKey('CorePage', related_name='actions')
     link = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=765)
     opq_id = models.CharField(max_length=765)
@@ -52,13 +56,16 @@ class CoreAction(_akit_model):
     referring_mailing = models.ForeignKey('CoreMailing', related_name='referred_actions', null=True, blank=True)
     taf_emails_sent = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=765)
-    ip_address = models.IPAddressField()
+    ip_address = models.GenericIPAddressField()
     
     def fields(self):
         return CoreActionfield.objects.filter(parent_id=self)
     
     class Meta(_akit_model.Meta):
         db_table = u'core_action'
+
+    def __str__(self):
+        return '%s (%s)' % (self.page.title, self.created_at.strftime('%c'))
 
 class ReportsReport(_akit_model):
     created_at = models.DateTimeField()
@@ -163,7 +170,7 @@ class AuthGroup(_akit_model):
         db_table = u'auth_group'
 
 class AuthGroupPermissions(_akit_model):
-    group = models.ForeignKey('AuthGroup', unique=True)
+    group = models.OneToOneField('AuthGroup')
     permission = models.ForeignKey('AuthPermission')
     class Meta(_akit_model.Meta):
         db_table = u'auth_group_permissions'
@@ -196,13 +203,13 @@ class AuthUser(_akit_model):
         db_table = u'auth_user'
 
 class AuthUserGroups(_akit_model):
-    user = models.ForeignKey('AuthUser', unique=True)
+    user = models.OneToOneField('AuthUser')
     group = models.ForeignKey('AuthGroup')
     class Meta(_akit_model.Meta):
         db_table = u'auth_user_groups'
 
 class AuthUserUserPermissions(_akit_model):
-    user = models.ForeignKey('AuthUser', unique=True)
+    user = models.OneToOneField('AuthUser')
     permission = models.ForeignKey('AuthPermission')
     class Meta(_akit_model.Meta):
         db_table = u'auth_user_user_permissions'
@@ -247,7 +254,7 @@ class CmsCallForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -268,7 +275,7 @@ class CmsDonationForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ask_text = models.TextField()
@@ -292,7 +299,7 @@ class CmsEventCreateForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ground_rules = models.TextField()
@@ -309,7 +316,7 @@ class CmsEventSignupForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ground_rules = models.TextField()
@@ -326,7 +333,7 @@ class CmsLetterForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     statement_leadin = models.TextField()
@@ -340,7 +347,7 @@ class CmsLteForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -354,7 +361,7 @@ class CmsPetitionForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     statement_leadin = models.TextField()
@@ -373,7 +380,7 @@ class CmsRecurringdonationcancelForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     please_stay_text = models.TextField()
@@ -385,7 +392,7 @@ class CmsRecurringdonationupdateForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     update_card_text = models.TextField()
@@ -397,7 +404,7 @@ class CmsSignupForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -409,7 +416,7 @@ class CmsSurveyForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -471,7 +478,7 @@ class CmsUnsubscribeForm(_akit_model):
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
     templateset = models.ForeignKey('CmsTemplateset')
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -492,7 +499,7 @@ class CmsUploadedfile(_akit_model):
 
 
 class CoreActionfield(_akit_model):
-    parent = models.ForeignKey('CoreAction')
+    parent = models.ForeignKey('CoreAction', related_name='customfields')
     name = models.CharField(max_length=765)
     value = models.TextField()
     class Meta(_akit_model.Meta):
@@ -513,7 +520,7 @@ class CoreActionnotification(_akit_model):
         db_table = u'core_actionnotification'
 
 class CoreActionnotificationToStaff(_akit_model):
-    actionnotification = models.ForeignKey('CoreActionnotification', unique=True)
+    actionnotification = models.OneToOneField('CoreActionnotification')
     user = models.ForeignKey('AuthUser')
     class Meta(_akit_model.Meta):
         db_table = u'core_actionnotification_to_staff'
@@ -527,7 +534,7 @@ class CoreActivityleveltargetingoption(_akit_model):
 class CoreAdminprefs(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('AuthUser', unique=True)
+    user = models.OneToOneField('AuthUser')
     content_type = models.ForeignKey('DjangoContentType')
     ordering = models.CharField(max_length=765, blank=True)
     class Meta(_akit_model.Meta):
@@ -614,13 +621,13 @@ class CoreCallaction(CoreAction):
         db_table = u'core_callaction'
 
 class CoreCallactionChecked(_akit_model):
-    callaction = models.ForeignKey('CoreCallaction', unique=True)
+    callaction = models.OneToOneField('CoreCallaction')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction_checked'
 
 class CoreCallactionTargeted(_akit_model):
-    callaction = models.ForeignKey('CoreCallaction', unique=True)
+    callaction = models.OneToOneField('CoreCallaction')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction_targeted'
@@ -632,7 +639,7 @@ class CoreCallpage(CorePage):
         db_table = u'core_callpage'
 
 class CoreCallpageTargetGroups(_akit_model):
-    callpage = models.ForeignKey('CoreCallpage', unique=True)
+    callpage = models.OneToOneField('CoreCallpage')
     targetgroup = models.ForeignKey('CoreTargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_callpage_target_groups'
@@ -649,7 +656,7 @@ class CoreCandidate(_akit_model):
         db_table = u'core_candidate'
 
 class CoreCandidateTags(_akit_model):
-    candidate = models.ForeignKey('CoreCandidate', unique=True)
+    candidate = models.OneToOneField('CoreCandidate')
     tag = models.ForeignKey('CoreTag')
     class Meta(_akit_model.Meta):
         db_table = u'core_candidate_tags'
@@ -694,13 +701,13 @@ class CoreCongresstargetgroup(CoreTargetgroup):
         db_table = u'core_congresstargetgroup'
 
 class CoreCongresstargetgroupExcludes(_akit_model):
-    congresstargetgroup = models.ForeignKey('CoreCongresstargetgroup', unique=True)
+    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_congresstargetgroup_excludes'
 
 class CoreCongresstargetgroupTargets(_akit_model):
-    congresstargetgroup = models.ForeignKey('CoreCongresstargetgroup', unique=True)
+    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_congresstargetgroup_targets'
@@ -724,7 +731,7 @@ class CoreDonationHpcRuleCondition(_akit_model):
         db_table = u'core_donation_hpc_rule_condition'
 
 class CoreDonationHpcRuleExcludeTags(_akit_model):
-    donationhpcrule = models.ForeignKey('CoreDonationHpcRule', unique=True)
+    donationhpcrule = models.OneToOneField('CoreDonationHpcRule')
     tag = models.ForeignKey('CoreTag')
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule_exclude_tags'
@@ -745,13 +752,13 @@ class CoreDonationcancellationpage(CorePage):
         db_table = u'core_donationcancellationpage'
 
 class CoreDonationpageCandidates(_akit_model):
-    donationpage = models.ForeignKey('CoreDonationpage', unique=True)
+    donationpage = models.OneToOneField('CoreDonationpage')
     candidate = models.ForeignKey('CoreCandidate')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationpage_candidates'
 
 class CoreDonationpageProducts(_akit_model):
-    donationpage = models.ForeignKey('CoreDonationpage', unique=True)
+    donationpage = models.OneToOneField('CoreDonationpage')
     product = models.ForeignKey('CoreProduct')
     class Meta(_akit_model.Meta):
         db_table = u'core_donationpage_products'
@@ -868,7 +875,7 @@ class CoreLetteraction(CoreAction):
         db_table = u'core_letteraction'
 
 class CoreLetteractionTargeted(_akit_model):
-    letteraction = models.ForeignKey('CoreLetteraction', unique=True)
+    letteraction = models.OneToOneField('CoreLetteraction')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_letteraction_targeted'
@@ -883,7 +890,7 @@ class CoreLetterpage(CorePage):
         db_table = u'core_letterpage'
 
 class CoreLetterpageTargetGroups(_akit_model):
-    letterpage = models.ForeignKey('CoreLetterpage', unique=True)
+    letterpage = models.OneToOneField('CoreLetterpage')
     targetgroup = models.ForeignKey('CoreTargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_letterpage_target_groups'
@@ -900,8 +907,8 @@ class CoreList(_akit_model):
 class CoreLocation(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', primary_key=True)
-    us_district = models.CharField(max_length=15)
+    user = models.OneToOneField('CoreUser', primary_key=True, related_name='location')
+    us_district = models.CharField(max_length=15, verbose_name="US district")
     us_state_senate = models.CharField(max_length=18)
     us_state_district = models.CharField(max_length=18)
     us_county = models.CharField(max_length=765)
@@ -932,13 +939,13 @@ class CoreLtepage(CorePage):
         db_table = u'core_ltepage'
 
 class CoreMailingReviewers(_akit_model):
-    mailing = models.ForeignKey('CoreMailing', unique=True)
+    mailing = models.OneToOneField('CoreMailing')
     user = models.ForeignKey('CoreUser')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailing_reviewers'
 
 class CoreMailingTags(_akit_model):
-    mailing = models.ForeignKey('CoreMailing', unique=True)
+    mailing = models.OneToOneField('CoreMailing')
     tag = models.ForeignKey('CoreTag')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailing_tags'
@@ -989,49 +996,49 @@ class CoreMailingtargeting(_akit_model):
         db_table = u'core_mailingtargeting'
 
 class CoreMailingtargetingActions(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     page = models.ForeignKey('CorePage')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_actions'
 
 class CoreMailingtargetingCampaigns(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     campaign = models.ForeignKey('EventsCampaign')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_campaigns'
 
 class CoreMailingtargetingLanguages(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     language = models.ForeignKey('CoreLanguage')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_languages'
 
 class CoreMailingtargetingLists(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     list = models.ForeignKey('CoreList')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_lists'
 
 class CoreMailingtargetingMailings(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     mailing = models.ForeignKey('CoreMailing')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_mailings'
 
 class CoreMailingtargetingTargetGroups(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     congresstargetgroup = models.ForeignKey('CoreCongresstargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_target_groups'
 
 class CoreMailingtargetingUsers(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     user = models.ForeignKey('CoreUser')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_users'
 
 class CoreMailingtargetingWasMonthlyDonor(_akit_model):
-    mailingtargeting = models.ForeignKey('CoreMailingtargeting', unique=True)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting')
     recurringdonortargetingoption = models.ForeignKey('CoreRecurringdonortargetingoption')
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_was_monthly_donor'
@@ -1176,26 +1183,26 @@ class CoreOrderrecurring(_akit_model):
         db_table = u'core_orderrecurring'
 
 class CorePageRequiredFields(_akit_model):
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     formfield = models.ForeignKey('CoreFormfield')
     class Meta(_akit_model.Meta):
         db_table = u'core_page_required_fields'
 
 class CorePageTags(_akit_model):
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     tag = models.ForeignKey('CoreTag')
     class Meta(_akit_model.Meta):
         db_table = u'core_page_tags'
 
 class CorePagefield(_akit_model):
-    parent = models.ForeignKey('CorePage', related_name='custom_fields')
+    parent = models.ForeignKey('CorePage', related_name='customfields')
     name = models.ForeignKey('CoreAllowedpagefield', db_column='name')
     value = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_pagefield'
 
 class CorePagefollowup(_akit_model):
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     send_email = models.IntegerField()
     url = models.CharField(max_length=765)
     email_wrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True)
@@ -1211,7 +1218,7 @@ class CorePagefollowup(_akit_model):
         db_table = u'core_pagefollowup'
 
 class CorePagefollowupNotifications(_akit_model):
-    pagefollowup = models.ForeignKey('CorePagefollowup', unique=True)
+    pagefollowup = models.OneToOneField('CorePagefollowup')
     actionnotification = models.ForeignKey('CoreActionnotification')
     class Meta(_akit_model.Meta):
         db_table = u'core_pagefollowup_notifications'
@@ -1219,7 +1226,7 @@ class CorePagefollowupNotifications(_akit_model):
 class CorePagetargetchange(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    page = models.ForeignKey('CorePage', unique=True)
+    page = models.OneToOneField('CorePage')
     targets_representation = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_pagetargetchange'
@@ -1230,7 +1237,7 @@ class CorePetitionaction(CoreAction):
         db_table = u'core_petitionaction'
 
 class CorePetitionactionTargeted(_akit_model):
-    petitionaction = models.ForeignKey('CorePetitionaction', unique=True)
+    petitionaction = models.OneToOneField('CorePetitionaction')
     target = models.ForeignKey('CoreTarget')
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionaction_targeted'
@@ -1249,20 +1256,20 @@ class CorePetitiondeliveryjob(_akit_model):
     all_to_all = models.IntegerField()
     header_content = models.TextField()
     footer_content = models.TextField()
-    backgroundtask = models.ForeignKey('CoreBackgroundtask', unique=True, null=True, blank=True)
+    backgroundtask = models.OneToOneField('CoreBackgroundtask', null=True, blank=True)
     date_from = models.DateField(null=True, blank=True)
     date_to = models.DateField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob'
 
 class CorePetitiondeliveryjobPetitions(_akit_model):
-    petitiondeliveryjob = models.ForeignKey('CorePetitiondeliveryjob', unique=True)
+    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob')
     page = models.ForeignKey('CorePage')
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob_petitions'
 
 class CorePetitiondeliveryjobTargetGroups(_akit_model):
-    petitiondeliveryjob = models.ForeignKey('CorePetitiondeliveryjob', unique=True)
+    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob')
     targetgroup = models.ForeignKey('CoreTargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob_target_groups'
@@ -1278,7 +1285,7 @@ class CorePetitionpage(CorePage):
         db_table = u'core_petitionpage'
 
 class CorePetitionpageTargetGroups(_akit_model):
-    petitionpage = models.ForeignKey('CorePetitionpage', unique=True)
+    petitionpage = models.OneToOneField('CorePetitionpage')
     targetgroup = models.ForeignKey('CoreTargetgroup')
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionpage_target_groups'
@@ -1286,7 +1293,7 @@ class CorePetitionpageTargetGroups(_akit_model):
 class CorePhone(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser')
+    user = models.ForeignKey('CoreUser', related_name='phones')
     type = models.CharField(max_length=75, unique=True)
     phone = models.CharField(max_length=75)
     source = models.CharField(max_length=75, unique=True)
@@ -1329,7 +1336,7 @@ class CoreProduct(_akit_model):
         db_table = u'core_product'
 
 class CoreProductTags(_akit_model):
-    product = models.ForeignKey('CoreProduct', unique=True)
+    product = models.OneToOneField('CoreProduct')
     tag = models.ForeignKey('CoreTag')
     class Meta(_akit_model.Meta):
         db_table = u'core_product_tags'
@@ -1536,7 +1543,7 @@ class CoreTasktrace(_akit_model):
 
 class CoreTimezonepreference(_akit_model):
     tz_name = models.CharField(max_length=192)
-    user = models.ForeignKey('AuthUser', unique=True)
+    user = models.OneToOneField('AuthUser')
     class Meta(_akit_model.Meta):
         db_table = u'core_timezonepreference'
 
@@ -1663,7 +1670,8 @@ class CoreUser(_akit_model):
     source = models.CharField(max_length=765)
     lang = models.ForeignKey('CoreLanguage', null=True, blank=True)
     rand_id = models.IntegerField()
-    
+
+
     # Return Fields As A Dictionary
     def custom_fields(self):
         fields = {}
@@ -1678,19 +1686,24 @@ class CoreUser(_akit_model):
     def actions(self):
         return CoreAction.objects.select_related().filter(user_id=self)
     
-    def __unicode__(self):
+    def __str__(self):
         return u'%s %s' % (self.first_name, self.last_name)
-    
+
     class Meta(_akit_model.Meta):
-        db_table = u'core_user'
+        db_table = 'core_user'
 
 class CoreUserfield(_akit_model):
-    parent = models.ForeignKey('CoreUser')
-    name = models.ForeignKey('CoreAlloweduserfield', db_column='name')
-    value = models.TextField()
+    parent = models.ForeignKey('CoreUser', related_name='customfields')
+    name = models.CharField(max_length=765)
+    value = models.CharField(max_length=65535)
+
     class Meta(_akit_model.Meta):
         db_table = u'core_userfield'
 
+    def __str__(self):
+        return self.value
+
+        
 class CoreUsermailing(_akit_model):
     mailing = models.ForeignKey('CoreMailing')
     user = models.ForeignKey('CoreUser')
@@ -1702,7 +1715,7 @@ class CoreUsermailing(_akit_model):
 class CoreUseroriginal(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', primary_key=True)
+    user = models.OneToOneField('CoreUser', primary_key=True)
     address1 = models.CharField(max_length=765)
     address2 = models.CharField(max_length=765)
     city = models.CharField(max_length=765)
@@ -1786,6 +1799,7 @@ class EventsCampaign(_akit_model):
     show_attendee_count = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'events_campaign'
+        verbose_name_plural = 'Event Campaigns'
 
 class EventsEvent(_akit_model):
     created_at = models.DateTimeField()
@@ -1801,14 +1815,15 @@ class EventsEvent(_akit_model):
     country = models.CharField(max_length=765)
     longitude = models.FloatField(null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
-    campaign = models.ForeignKey('EventsCampaign')
+    campaign = models.ForeignKey('EventsCampaign', related_name='events')
     title = models.CharField(max_length=765)
     creator = models.ForeignKey('CoreUser')
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=96)
     host_is_confirmed = models.IntegerField()
-    is_private = models.IntegerField()
+    is_private = models.IntegerField(choices=((0, 'public'), (1, 'private')),
+                                     verbose_name="private or public")
     is_approved = models.IntegerField()
     attendee_count = models.IntegerField()
     max_attendees = models.IntegerField(null=True, blank=True)
@@ -1820,24 +1835,31 @@ class EventsEvent(_akit_model):
     notes = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'events_event'
+        verbose_name_plural = 'Events'
 
 class EventsEventfield(_akit_model):
-    parent = models.ForeignKey('EventsEvent')
+    parent = models.ForeignKey('EventsEvent', related_name='customfields')
     name = models.CharField(max_length=765)
     value = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'events_eventfield'
 
+
 class EventsEventsignup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     user = models.ForeignKey('CoreUser')
-    event = models.ForeignKey('EventsEvent')
-    role = models.CharField(max_length=96)
-    status = models.CharField(max_length=96)
-    page_id = models.IntegerField()
+    event = models.ForeignKey('EventsEvent', related_name='signups')
+    role = models.CharField(max_length=96, choices=(('host', 'Host'), ('attendee', 'Attendee')))
+    status = models.CharField(max_length=96, choices=(('active', 'active'), ('deleted', 'deleted'), ('cancelled', 'cancelled')))
+    #this can be the signup OR create page for the event, because the host signup themselves
+    page = models.ForeignKey('CorePage', null=True, related_name='event_signups')
     class Meta(_akit_model.Meta):
         db_table = u'events_eventsignup'
+
+    def __str__(self):
+        return '%s (%s)' % (self.page.title, self.created_at.strftime('%c'))
+
 
 class EventsEventsignupfield(_akit_model):
     parent = models.ForeignKey('EventsEventsignup')
@@ -1870,7 +1892,7 @@ class ReportsQuerytemplate(_akit_model):
         db_table = u'reports_querytemplate'
 
 class ReportsReportCategories(_akit_model):
-    report = models.ForeignKey('ReportsReport', unique=True)
+    report = models.OneToOneField('ReportsReport')
     reportcategory = models.ForeignKey('ReportsReportcategory')
     class Meta(_akit_model.Meta):
         db_table = u'reports_report_categories'
@@ -1882,3 +1904,22 @@ class ReportsReportcategory(_akit_model):
     name = models.CharField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'reports_reportcategory'
+
+
+class ZipProximity(_akit_model):
+    """
+    All zip code pairs within 50 miles of each other
+    """
+
+    class Meta(_akit_model.Meta):
+        db_table = 'zip_proximity'
+
+    zip = models.CharField(max_length=5,
+                           #not actually primary key
+                           # but django assumes/needs a primary_key field
+                           primary_key=True)
+    nearby = models.CharField(max_length=5)
+    same_state = models.NullBooleanField(null=True, default=None)
+    distance = models.DecimalField(max_digits=3, decimal_places=1,
+                                   help_text="Distance to second zip (?in miles)")
+
