@@ -11,6 +11,7 @@ class AKActionAPI(base.ActionKitAPI):
             'akid': akid,
             'page': page
         }
+        # For custom fields, prefixed with action_
         if fields is not None:
             data.update(fields)
 
