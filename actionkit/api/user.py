@@ -13,7 +13,7 @@ class AKUserAPI(base.ActionKitAPI):
         """
         if not hasattr(name_or_dict, 'get') and value:
             name_or_dict = { name_or_dict: value}
-            
+
         res = self.client.put(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id),
@@ -75,6 +75,14 @@ class AKUserAPI(base.ActionKitAPI):
             rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
         return rv
 
+    def add_phone(self, phone_dict):
+        res = self.client.post(
+            '%s/rest/v1/phone/' % self.base_url,
+            json=phone_dict)
+        rv = {'res': res}
+        if res.headers.get('Location'):
+            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
+        return rv
 
 TEST_DATA = {
     'create_user': {
