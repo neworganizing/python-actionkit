@@ -42,6 +42,12 @@ class JoinField:
         #alias is core_userfield and related_alias is core_user
         return ExtraWhere(["{}.name = %s".format(alias)], (self.customfield,))
 
+class ZipJoin:
+    def get_joining_columns(self):
+        return (('zip', 'zip'),)
+
+    def get_extra_restriction(self, where_class, alias, related_alias):
+        return #doesn't seem to work here
 
 class _akit_model(models.Model):
 
@@ -2022,6 +2028,20 @@ class EventsCampaign(_akit_model):
 
 class EventsEventManager(models.Manager):
 
+    def public_search(self):
+        return self.__class__.filter_public_search(self.get_queryset())
+
+    @classmethod
+    def filter_public_search(cls, qs, allow_full=False):
+        query = qs.filter(is_private=0,
+                          status="active",
+                          host_is_confirmed=1
+                      )
+        if not allow_full:
+            query = query.extra(where=['max_attendees > attendee_count'])
+        return query
+
+
     @classmethod
     def add_eventfield_to_queryset(cls, qs, fieldname, filtervalue=None):
         """
@@ -2058,6 +2078,25 @@ class EventsEventManager(models.Manager):
         qs = qs.extra(select={userattr: '%s.value' % uf_alias})
         return qs
 
+    @classmethod
+    def filter_proximity(cls, qs, zip, radius, same_state=False):
+        """
+        Joins on ZipProximity and then filters on radius
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        query_alias = qs.query.join(Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
+                                         ZipJoin(), True))
+
+        qs.query.where.add(ExtraWhere(
+            ['{qa}.nearby=%s AND {qa}.distance < %s AND {qa}.same_state IN %s'.format(qa=query_alias)],
+            [zip, radius, ( (True,) if same_state else (True, False))]
+        ), AND)
+
+        qs = qs.extra(select={
+            'distance': '%s.distance' % query_alias,
+            'same_state': '%s.same_state' % query_alias,
+        })
+        return qs
 
 
 class EventsEvent(_akit_model):
