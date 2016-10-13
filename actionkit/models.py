@@ -57,6 +57,13 @@ class _akit_model(models.Model):
             raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
         elif save_mode == 'api' and hasattr(self, 'api_save'):
             self.api_save(**kwargs)
+            updated = bool(self.id) #assuming just updating for now
+            models.signals.post_save.send(sender=self.__class__,
+                                          instance=self,
+                                          created=(not updated),
+                                          update_fields=None,
+                                          raw=True)
+
 
     class Meta:
         abstract = True
