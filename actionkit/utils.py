@@ -24,4 +24,4 @@ def generate_akid(ak_secret, cleartext):
     urlsafe_hash = base64.urlsafe_b64encode(raw_hash).decode('ascii')
     short_hash = urlsafe_hash[:6]
 
-    return '.'.join([cleartext, short_hash])
+    return '.'.join([str(cleartext), short_hash])
