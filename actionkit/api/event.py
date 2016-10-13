@@ -1,4 +1,3 @@
-import json
 import re
 import requests
 from actionkit.api import base
@@ -24,8 +23,22 @@ class AKEventAPI(base.ActionKitAPI):
             data['fields'] = fields
         result = self.client.post(
             '%s/rest/v1/eventsignup/' % self.base_url,
-            data=json.dumps(data)
+            json=data
         )
+        return {'res': result}
+
+    def create_user_signup(self, event_id, page_name, fields):
+        assert(fields.get('email') or fields.get('akid'))
+
+        data = {
+            'page': page_name,
+            'event_id': event_id,
+        }
+
+        if fields:
+            data.update(fields)
+        result = requests.post('%s/rest/v1/action/' % self.base_url,
+                               json=data)
         return {'res': result}
 
     def update_signup(self, signup_id, user_id, event_id, page_id, role='attendee', status='active', fields=None):
@@ -40,7 +53,7 @@ class AKEventAPI(base.ActionKitAPI):
             data['fields'] = fields
         result = self.client.put(
             '%s/rest/v1/eventsignup/%s/' % (self.base_url, signup_id),
-            data=json.dumps(data)
+            json=data
         )
         return {'res': result}
 
@@ -52,7 +65,7 @@ class AKEventAPI(base.ActionKitAPI):
         }
         result = self.client.post(
             '%s/rest/v1/eventfield/' % self.base_url,
-            data=json.dumps(data)
+            json=data
         )
         return {'res': result}
 

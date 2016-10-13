@@ -11,6 +11,8 @@ class ActionKitAPI(object):
 
         self.base_url = settings.AK_BASEURL
 
+        self.secret = getattr(settings, 'AK_SECRET', None)
+
 
     def _http_return(self, res):
         """
