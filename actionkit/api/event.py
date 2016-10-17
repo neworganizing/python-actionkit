@@ -11,6 +11,23 @@ class AKEventAPI(base.ActionKitAPI):
         )
         return {'res': result}
 
+    def list_signups(self, user_id):
+        def idfromurl(path):
+            if '/' in path:
+                return re.findall(r'/(\d+)/?$', path)[0]
+
+        result = self.client.get(
+            '%s/rest/v1/eventsignup/?user=%s' % (self.base_url, user_id))
+        final_result = {'res': result}
+        if result.status_code == 200:
+            json = result.json()
+            if json.get('objects'):
+                for obj in json.get('objects'):
+                    obj['event_id'] = idfromurl(obj.get('event'))
+                    obj['page_id'] = idfromurl(obj.get('page'))
+            final_result.update(json)
+        return final_result
+
     def create_signup(self, user_id, event_id, page_id, role='attendee', status='active', fields=None):
         data = {
             'event': '/rest/v1/event/%s/' % event_id,
