@@ -26,9 +26,10 @@ class JoinField:
     """We need this because of the extra restriction on the join
     for add_userfield_to_queryset() and add_eventfield_to_queryset()
     """
-    def __init__(self, basis, customfield, cols=None):
+    def __init__(self, basis, customfield, cols=None, customval=None):
         self.basis = basis
         self.customfield = customfield
+        self.customval = customval # if this is set, then it will be part of the join
         #in the form of (('<main table join field>', '<joined table join field>'), )
         self.cols = cols
 
@@ -40,14 +41,26 @@ class JoinField:
 
     def get_extra_restriction(self, where_class, alias, related_alias):
         #alias is core_userfield and related_alias is core_user
-        return ExtraWhere(["{}.name = %s".format(alias)], (self.customfield,))
+        wheres = ["{}.name = %s".format(alias)]
+        params = [self.customfield,]
+        if self.customval:
+            wheres.append("{}.value = %s".format(alias))
+            params.append(self.customval)
+        return ExtraWhere(wheres, params)
 
 class ZipJoin:
+    @classmethod
+    def add_to_queryset(cls, qs):
+        return qs.query.join(
+            Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
+                 cls(), True))
+
+
     def get_joining_columns(self):
         return (('zip', 'zip'),)
 
     def get_extra_restriction(self, where_class, alias, related_alias):
-        return #doesn't seem to work here
+        return None
 
 class _akit_model(models.Model):
 
@@ -1824,26 +1837,32 @@ class CoreUserManager(models.Manager):
         return qs
 
     @classmethod
-    def add_phone_to_queryset(cls, qs):
+    def add_phone_to_queryset(cls, qs, no_groupby=False):
         """
         Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
         """
         phone_alias = qs.query.join(Join('core_phone', qs.query.get_initial_alias(), 'core_phone', LOUTER,
                                          CoreUser._meta.fields_map['phones'], True))
-        #group by everything except our aggregate annotation (bad general assumption)
-        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
 
-        qs = qs.extra(select={'first_phone': '%s.phone' % phone_alias})
+        if not no_groupby:
+            #group by everything except our aggregate annotation (bad general assumption)
+            qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs = qs.extra(select={
+            'first_phone': '%s.normalized_phone' % phone_alias,
+            'first_phone_type': '%s.type' % phone_alias,
+            'first_phone_source': '%s.source' % phone_alias,
+        })
         return qs
 
     @classmethod
-    def add_userfield_to_queryset(cls, qs, userfieldname):
+    def add_userfield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
         """
         Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
         """
         #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
         uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
-                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname), True))
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
         userattr = 'userfield_%s' % userfieldname
         qs = qs.extra(select={userattr: '%s.value' % uf_alias})
         return qs
@@ -2091,8 +2110,7 @@ class EventsEventManager(models.Manager):
         Joins on ZipProximity and then filters on radius
         """
         #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
-        query_alias = qs.query.join(Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
-                                         ZipJoin(), True))
+        query_alias = ZipJoin.add_to_queryset(qs)
 
         qs.query.where.add(ExtraWhere(
             ['{qa}.nearby=%s AND {qa}.distance < %s AND {qa}.same_state IN %s'.format(qa=query_alias)],
