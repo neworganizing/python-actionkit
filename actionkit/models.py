@@ -43,11 +43,18 @@ class JoinField:
         return ExtraWhere(["{}.name = %s".format(alias)], (self.customfield,))
 
 class ZipJoin:
+    @classmethod
+    def add_to_queryset(cls, qs):
+        return qs.query.join(
+            Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
+                 cls(), True))
+
+
     def get_joining_columns(self):
         return (('zip', 'zip'),)
 
     def get_extra_restriction(self, where_class, alias, related_alias):
-        return #doesn't seem to work here
+        return None
 
 class _akit_model(models.Model):
 
@@ -2091,8 +2098,7 @@ class EventsEventManager(models.Manager):
         Joins on ZipProximity and then filters on radius
         """
         #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
-        query_alias = qs.query.join(Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
-                                         ZipJoin(), True))
+        query_alias = ZipJoin.add_to_queryset(qs)
 
         qs.query.where.add(ExtraWhere(
             ['{qa}.nearby=%s AND {qa}.distance < %s AND {qa}.same_state IN %s'.format(qa=query_alias)],
