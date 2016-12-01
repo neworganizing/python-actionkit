@@ -87,7 +87,7 @@ class CorePage(_akit_model):
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     hosted_with = models.ForeignKey('CoreHostingplatform')
     url = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
@@ -138,8 +138,8 @@ class ReportsReport(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
-    short_name = models.CharField(max_length=765, unique=True, blank=True)
+    name = models.TextField(max_length=765, unique=True)
+    short_name = models.TextField(max_length=765, unique=True, blank=True)
     description = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
     run_every = models.CharField(max_length=765)
@@ -225,7 +225,7 @@ class CoreTargetgroup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     type = models.CharField(max_length=765)
     readonly = models.IntegerField()
     class Meta(_akit_model.Meta):
@@ -251,7 +251,7 @@ class AuthMessage(_akit_model):
 class AuthPermission(_akit_model):
     name = models.CharField(max_length=150)
     content_type = models.ForeignKey('DjangoContentType')
-    codename = models.CharField(max_length=300, unique=True)
+    codename = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'auth_permission'
 
@@ -294,14 +294,14 @@ class AxesAccessattempt(_akit_model):
         db_table = u'axes_accessattempt'
 
 class Cache(_akit_model):
-    cache_key = models.CharField(max_length=765, primary_key=True)
+    cache_key = models.TextField(max_length=765, primary_key=True)
     value = models.TextField()
     expires = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'cache'
 
 class CeleryTaskmeta(_akit_model):
-    task_id = models.CharField(max_length=765, unique=True)
+    task_id = models.TextField(max_length=765, unique=True)
     status = models.CharField(max_length=150)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
@@ -310,7 +310,7 @@ class CeleryTaskmeta(_akit_model):
         db_table = u'celery_taskmeta'
 
 class CeleryTasksetmeta(_akit_model):
-    taskset_id = models.CharField(max_length=765, unique=True)
+    taskset_id = models.TextField(max_length=765, unique=True)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -532,7 +532,7 @@ class CmsTemplateset(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     editable = models.IntegerField()
     lang = models.ForeignKey('CoreLanguage', null=True, blank=True)
@@ -559,7 +559,7 @@ class CmsUploadedfile(_akit_model):
     bucket = models.CharField(max_length=765)
     directory = models.CharField(max_length=765)
     filename = models.CharField(max_length=765)
-    url = models.CharField(max_length=765, unique=True)
+    url = models.TextField(max_length=765, unique=True)
     etag = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'cms_uploadedfile'
@@ -611,7 +611,7 @@ class CoreAllowedpagefield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_allowedpagefield'
@@ -620,7 +620,7 @@ class CoreAlloweduserfield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_alloweduserfield'
@@ -676,7 +676,7 @@ class CoreBuiltintranslation(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     iso_code = models.CharField(max_length=30)
     translations = models.TextField()
     class Meta(_akit_model.Meta):
@@ -715,7 +715,7 @@ class CoreCandidate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     portrait_url = models.CharField(max_length=765)
     description = models.TextField()
     status = models.CharField(max_length=765)
@@ -745,7 +745,7 @@ class CoreClick(_akit_model):
         db_table = u'core_click'
 
 class CoreClickurl(_akit_model):
-    url = models.CharField(max_length=765, unique=True)
+    url = models.TextField(max_length=765, unique=True)
     page = models.ForeignKey('CorePage', null=True, blank=True)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -754,7 +754,7 @@ class CoreClickurl(_akit_model):
 class CoreClientdomain(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    domain = models.CharField(max_length=765, unique=True)
+    domain = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_clientdomain'
 
@@ -783,7 +783,7 @@ class CoreDonationHpcRule(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     which_amount = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule'
@@ -841,7 +841,7 @@ class CoreDonationupdatepage(CorePage):
         db_table = u'core_donationupdatepage'
 
 class CoreEmailtemplate(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     wrapper = models.ForeignKey('CoreEmailwrapper')
     from_line = models.CharField(max_length=765)
     subject = models.CharField(max_length=765)
@@ -853,7 +853,7 @@ class CoreEmailwrapper(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     text_template = models.TextField()
     unsubscribe_text = models.TextField()
@@ -889,7 +889,7 @@ class CoreEventsignuppage(CorePage):
         db_table = u'core_eventsignuppage'
 
 class CoreFormfield(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_formfield'
 
@@ -897,12 +897,12 @@ class CoreFromline(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    from_line = models.CharField(max_length=765, unique=True)
+    from_line = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_fromline'
 
 class CoreHostingplatform(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     after_basics_redirect_url = models.CharField(max_length=765)
     after_basics_redirect_name = models.CharField(max_length=765)
     end_redirect_url = models.CharField(max_length=765)
@@ -928,7 +928,7 @@ class CoreLanguage(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     translations = models.TextField()
     iso_code = models.CharField(max_length=30, blank=True)
     inherit_from_id = models.IntegerField(null=True, blank=True)
@@ -966,7 +966,7 @@ class CoreList(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     is_default = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_list'
@@ -1153,7 +1153,7 @@ class CoreMultilingualcampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_multilingualcampaign'
 
@@ -1372,7 +1372,7 @@ class CorePrinttemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     header_html = models.TextField()
     template = models.TextField()
     footer_html = models.TextField()
@@ -1393,7 +1393,7 @@ class CoreProduct(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.TextField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
     shippable = models.IntegerField()
@@ -1446,7 +1446,7 @@ class CoreRecurringdonortargetingoption(_akit_model):
         db_table = u'core_recurringdonortargetingoption'
 
 class CoreRedirect(_akit_model):
-    short_code = models.CharField(max_length=765, unique=True, blank=True)
+    short_code = models.TextField(max_length=765, unique=True, blank=True)
     url = models.CharField(max_length=12288)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -1511,7 +1511,7 @@ class CoreSubscription(_akit_model):
 class CoreSubscriptionchangetype(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_subscriptionchangetype'
@@ -1540,7 +1540,7 @@ class CoreTag(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     times_used = models.IntegerField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_tag'
@@ -1877,7 +1877,7 @@ class CoreUser(_akit_model):
 
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    email = models.CharField(max_length=765, unique=True)
+    email = models.TextField(max_length=765, unique=True)
     prefix = models.CharField(max_length=765)
     first_name = models.CharField(max_length=765)
     middle_name = models.CharField(max_length=765)
@@ -2003,8 +2003,8 @@ class DjangoAdminLog(_akit_model):
 
 class DjangoContentType(_akit_model):
     name = models.CharField(max_length=300)
-    app_label = models.CharField(max_length=300, unique=True)
-    model = models.CharField(max_length=300, unique=True)
+    app_label = models.TextField(max_length=300, unique=True)
+    model = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'django_content_type'
 
@@ -2019,7 +2019,7 @@ class EventsCampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     public_create_page = models.IntegerField()
     use_title = models.IntegerField()
     default_title = models.CharField(max_length=765)
@@ -2225,7 +2225,7 @@ class ReportsQuerytemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_querytemplate'
@@ -2240,7 +2240,7 @@ class ReportsReportcategory(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'reports_reportcategory'
 
