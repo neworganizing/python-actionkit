@@ -14,7 +14,7 @@ class AKUserAPI(base.ActionKitAPI):
         if not hasattr(name_or_dict, 'get') and value:
             name_or_dict = { name_or_dict: value}
 
-        res = self.client.put(
+        res = self.client.patch(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id),
             data=json.dumps({ 'fields': name_or_dict }))
