@@ -86,6 +86,19 @@ class AKEventAPI(base.ActionKitAPI):
         )
         return {'res': result}
 
+    def set_event_field(self, event_id, field_name, field_value, eventfield_id=None):
+        d = { 'name': field_name,
+              'value': field_value,
+              'event': '/rest/v1/event/%s/' % event_id}
+        method = 'post'
+        #the '/' at the end is IMPORTANT!
+        url = '%s/rest/v1/eventfield/' % self.base_url
+        if eventfield_id:
+            method = 'put'
+            url = url + ('%s/' % eventfield_id)
+        res = getattr(self.client, method)(url, json=d)
+        return self._http_return(res)
+
     def get_event_fields(self, event_id=None, field_name=None, field_value=None):
         data = {}
         if event_id is not None:

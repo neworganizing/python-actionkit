@@ -20,23 +20,6 @@ class AKUserAPI(base.ActionKitAPI):
             data=json.dumps({ 'fields': name_or_dict }))
         return self._http_return(res)
 
-    def set_eventfield(self, event_id, name, value, eventfield_id=None):
-        """
-        send a dict, or a single name, value pair
-        """
-        d = { 'name': name,
-              'value': value,
-              'event': '/rest/v1/event/%s/' % event_id}
-        method = 'post'
-        #the '/' at the end is IMPORTANT!
-        url = '%s/rest/v1/eventfield/' % self.base_url
-        if eventfield_id:
-            method = 'put'
-            url = url + ('%s/' % eventfield_id)
-        res = getattr(self.client, method)(url, data=json.dumps(d))
-        #import pdb; pdb.set_trace()
-        return self._http_return(res)
-
     def add_allowed_usertag(self, userfield_name):
         res = self.client.post(
             '%s/rest/v1/alloweduserfield/' % self.base_url,
