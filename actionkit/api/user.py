@@ -67,6 +67,15 @@ class AKUserAPI(base.ActionKitAPI):
             rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
         return rv
 
+    def login_token(self, user_id, ttl=86400):
+        res = self.client.post(
+            '{}/rest/v1/user/{}/logintoken/'.format(self.base_url, user_id),
+            data={'ttl': ttl})
+        if res.status_code == 200:
+            return res.json().get('token')
+        else:
+            return None
+
 TEST_DATA = {
     'create_user': {
         'res': None,
