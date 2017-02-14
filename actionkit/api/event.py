@@ -1,3 +1,4 @@
+import datetime
 import re
 import requests
 from actionkit.api import base
@@ -10,6 +11,45 @@ class AKEventAPI(base.ActionKitAPI):
             '%s/rest/v1/event/%s' % (self.base_url, event_id)
         )
         return {'res': result}
+
+    def update_event_action(self, event_id, fields):
+        #replicates what you would send to create_action
+        eventfields = {}
+        actionfields = {}
+        dateinfo = {}
+        for f,val in fields.items():
+            if f.startswith('event_starts_at'):
+                dateinfo[f] = val
+            elif f.startswith('event_'):
+                eventfields[f[len('event_'):]] = val
+            elif f.startswith('action_'):
+                actionfields[f[len('action_')]] = val
+        if dateinfo:
+            "2010-11-10T03:07:43"
+            eventdate = datetime.datetime.strptime(
+                '%s %s %s' % (
+                    dateinfo.get('event_starts_at_date'),
+                    dateinfo.get('event_starts_at_time'),
+                    dateinfo.get('event_starts_at_ampm')
+                ), '%m/%d/%Y %H:%M %p')
+            eventfields['starts_at'] = eventdate.strftime('%Y-%m-%dT%H:%M:00')
+
+        result = self.client.patch(
+            '%s/rest/v1/event/%s/' % (self.base_url, event_id),
+            json=eventfields)
+        rv = {'res': result}
+        if actionfields:
+            fieldresults = []
+            evt = self.get_event(event_id)
+            cur_fields = dict([(f['name'], f) for f in evt['res'].json().get('fields', [])])
+            for name,val in actionfields.items():
+                if name in cur_fields:
+                    if val != cur_fields[name]['value']:
+                        fieldresults.append(self.set_event_field(event_id, name, val, cur_fields[name]['id']))
+                else:
+                    fieldresults.append(self.set_event_field(event_id, name, val))
+            rv['fieldresults'] = fieldresults
+        return rv
 
     def list_signups(self, user_id):
         def idfromurl(path):
