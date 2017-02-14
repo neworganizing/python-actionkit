@@ -23,7 +23,7 @@ class AKEventAPI(base.ActionKitAPI):
             elif f.startswith('event_'):
                 eventfields[f[len('event_'):]] = val
             elif f.startswith('action_'):
-                actionfields[f[len('action_')]] = val
+                actionfields[f[len('action_'):]] = val
         if dateinfo:
             "2010-11-10T03:07:43"
             eventdate = datetime.datetime.strptime(
