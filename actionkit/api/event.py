@@ -25,13 +25,13 @@ class AKEventAPI(base.ActionKitAPI):
             elif f.startswith('action_'):
                 actionfields[f[len('action_'):]] = val
         if dateinfo:
-            "2010-11-10T03:07:43"
+            "2010-11-10T13:07:43"
             eventdate = datetime.datetime.strptime(
                 '%s %s %s' % (
                     dateinfo.get('event_starts_at_date'),
                     dateinfo.get('event_starts_at_time'),
                     dateinfo.get('event_starts_at_ampm')
-                ), '%m/%d/%Y %H:%M %p')
+                ), '%m/%d/%Y %I:%M %p')
             eventfields['starts_at'] = eventdate.strftime('%Y-%m-%dT%H:%M:00')
 
         result = self.client.patch(
