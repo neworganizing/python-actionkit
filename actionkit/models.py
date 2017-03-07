@@ -2145,6 +2145,8 @@ class EventsEvent(_akit_model):
     creator = models.ForeignKey('CoreUser')
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
+    starts_at_utc = models.DateTimeField(null=True, blank=True)
+    ends_at_utc = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=96, choices=(('active', 'active'),
                                                       ('cancelled', 'cancelled'),
                                                       ('deleted', 'deleted'),
