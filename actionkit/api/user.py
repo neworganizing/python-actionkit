@@ -1,6 +1,11 @@
+import csv
 import json
 import re
 import requests
+try:
+    from six import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 from actionkit.api import base
 
@@ -75,6 +80,26 @@ class AKUserAPI(base.ActionKitAPI):
             return res.json().get('token')
         else:
             return None
+
+    def bulk_upload(self, import_page, csv_file, autocreate_user_fields=0):
+        res = self.client.post(
+            '%s/rest/v1/upload/' % self.base_url,
+            files={'upload': csv_file},
+            data={'page': import_page,
+                  'autocreate_user_fields': int(autocreate_user_fields)})
+        rv = {'res': res,
+              'success': res.status_code == 201,
+              'progress_url': res.headers.get('Location')}
+        return rv
+
+    def bulk_upload_rows(self, import_page, headers, rows, autocreate_user_fields=0):
+        csv_file = StringIO()
+        outcsv = csv.writer(csv_file)
+        outcsv.writerow(headers)
+        outcsv.writerows(rows)
+        self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
+                         autocreate_user_fields=autocreate_user_fields)
+
 
 TEST_DATA = {
     'create_user': {
