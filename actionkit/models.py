@@ -9,6 +9,7 @@ from django.db.models.sql.where import (
     AND, OR, ExtraWhere, NothingNode, WhereNode,
 )
 from django.conf import settings
+from django import forms
 from django.utils import timezone
 
 from actionkit import ActionKitGeneralError
@@ -395,6 +396,10 @@ class CmsEventSignupForm(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'cms_event_signup_form'
 
+    def fields(self):
+        """Gets the custom fields for the event form"""
+        return self._fields_unfiltered.filter(form_type__model='eventsignupform')
+
 class CmsLetterForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
@@ -498,6 +503,41 @@ class CmsSurveyQuestion(_akit_model):
     survey_form = models.ForeignKey('CmsSurveyForm')
     class Meta(_akit_model.Meta):
         db_table = u'cms_survey_question'
+
+class CmsUserFormField(_akit_model):
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    form_type = models.ForeignKey('DjangoContentType')
+    form_id = models.PositiveIntegerField()
+    type = models.CharField(max_length=8)
+    label = models.TextField()
+    field_name = models.CharField(max_length=96)
+    input = models.CharField(max_length=16)
+    alternatives = models.TextField()
+    html = models.TextField()
+    status = models.CharField(max_length=8)
+    ordering = models.IntegerField()
+
+    class Meta(_akit_model.Meta):
+        db_table = u'cms_user_form_field'
+
+    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+                                           from_fields=['form_id'], to_fields=['id'],
+                                           related_name='_fields_unfiltered')
+
+    def formfield(self, widget_adapter=None):
+        if self.input == 'checkbox':
+            alts = [a.split('=',1) for a in self.alternatives.splitlines()]
+            for a in alts:
+                if len(a) == 1:
+                    a.append(a[0]) #copy value to name
+                else:
+                    a.reverse()
+            w = forms.CheckboxSelectMultiple
+            if callable(widget_adapter):
+                w = widget_adapter(self, w)
+            return forms.MultipleChoiceField(choices=alts, widget=w, label=self.label)
+
 
 class CmsTemplate(_akit_model):
     created_at = models.DateTimeField()
@@ -887,6 +927,11 @@ class CoreEventsignuppage(CorePage):
     campaign = models.ForeignKey('EventsCampaign')
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignuppage'
+
+    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+                                from_fields=['page_id'], to_fields=['page_id'],
+                                related_name='eventsignuppage')
+
 
 class CoreFormfield(_akit_model):
     name = models.TextField(max_length=765, unique=True)
