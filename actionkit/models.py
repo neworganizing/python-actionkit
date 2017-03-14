@@ -525,7 +525,7 @@ class CmsUserFormField(_akit_model):
                                            from_fields=['form_id'], to_fields=['id'],
                                            related_name='_fields_unfiltered')
 
-    def formfield(self):
+    def formfield(self, widget_adapter=None):
         if self.input == 'checkbox':
             alts = [a.split('=',1) for a in self.alternatives.splitlines()]
             for a in alts:
@@ -533,8 +533,10 @@ class CmsUserFormField(_akit_model):
                     a.append(a[0]) #copy value to name
                 else:
                     a.reverse()
-            return forms.MultipleChoiceField(choices=alts, widget=forms.CheckboxSelectMultiple,
-                                             label=self.label)
+            w = forms.CheckboxSelectMultiple
+            if callable(widget_adapter):
+                w = widget_adapter(self, w)
+            return forms.MultipleChoiceField(choices=alts, widget=w, label=self.label)
 
 
 class CmsTemplate(_akit_model):
