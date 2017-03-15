@@ -1962,7 +1962,7 @@ class CoreUser(_akit_model):
 
     def recent_phone(self):
         #get's most recent phone and parses makes it readable
-        return getattr(self.phones.order_by('-id').first(), 'normalized_phone', None)
+        return getattr(self.phones.order_by('-updated_at').first(), 'normalized_phone', None)
     
     class Meta(_akit_model.Meta):
         db_table = 'core_user'
