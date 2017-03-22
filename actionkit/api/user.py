@@ -1,6 +1,12 @@
+import csv
 import json
 import re
 import requests
+import sys
+try:
+    from six import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 from actionkit.api import base
 
@@ -75,6 +81,38 @@ class AKUserAPI(base.ActionKitAPI):
             return res.json().get('token')
         else:
             return None
+
+    def bulk_upload(self, import_page, csv_file, autocreate_user_fields=0):
+        """
+        Note: If you get a 500 error, try sending a much smaller file (say, one row),
+        which is more likely to return the proper 400 with a useful error message
+        """
+        #base.py defaults to JSON, but this has to be form/multi-part....
+        upload_client = self.get_client({'accepts': 'application/json'})
+        res = upload_client.post(
+            '%s/rest/v1/upload/' % self.base_url,
+            files={'upload': csv_file},
+            data={'page': import_page,
+                  'autocreate_user_fields': int(autocreate_user_fields)})
+        rv = {'res': res,
+              'success': res.status_code == 201,
+              'progress_url': res.headers.get('Location')}
+        return rv
+
+    def bulk_upload_rows(self, import_page, headers, rows, autocreate_user_fields=0):
+        csv_file = StringIO()
+        outcsv = csv.writer(csv_file)
+
+        outcsv.writerow(headers)
+        if sys.version_info.major >= 3:
+            outcsv.writerows(rows)
+        else: #this is the nightmare python3 has saved us from:
+            for row in rows:
+                outcsv.writerow([(s.encode("utf-8") if isinstance(s, unicode) else s)
+                                 for s in row])
+        return self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
+                                autocreate_user_fields=autocreate_user_fields)
+
 
 TEST_DATA = {
     'create_user': {
