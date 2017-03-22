@@ -2,6 +2,7 @@ import csv
 import json
 import re
 import requests
+import sys
 try:
     from six import StringIO
 except ImportError:
@@ -95,10 +96,16 @@ class AKUserAPI(base.ActionKitAPI):
     def bulk_upload_rows(self, import_page, headers, rows, autocreate_user_fields=0):
         csv_file = StringIO()
         outcsv = csv.writer(csv_file)
+
         outcsv.writerow(headers)
-        outcsv.writerows(rows)
-        self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
-                         autocreate_user_fields=autocreate_user_fields)
+        if sys.version_info.major >= 3:
+            outcsv.writerows(rows)
+        else: #this is the nightmare python3 has saved us from:
+            for row in rows:
+                outcsv.writerow([(s.encode("utf-8") if isinstance(s, unicode) else s)
+                                 for s in row])
+        return self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
+                                autocreate_user_fields=autocreate_user_fields)
 
 
 TEST_DATA = {
