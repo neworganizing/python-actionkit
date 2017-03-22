@@ -83,7 +83,13 @@ class AKUserAPI(base.ActionKitAPI):
             return None
 
     def bulk_upload(self, import_page, csv_file, autocreate_user_fields=0):
-        res = self.client.post(
+        """
+        Note: If you get a 500 error, try sending a much smaller file (say, one row),
+        which is more likely to return the proper 400 with a useful error message
+        """
+        #base.py defaults to JSON, but this has to be form/multi-part....
+        upload_client = self.get_client({'accepts': 'application/json'})
+        res = upload_client.post(
             '%s/rest/v1/upload/' % self.base_url,
             files={'upload': csv_file},
             data={'page': import_page,
