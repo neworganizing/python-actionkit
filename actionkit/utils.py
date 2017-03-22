@@ -19,9 +19,9 @@ def validate_akid(ak_secret, akid):
 
 
 def generate_akid(ak_secret, cleartext):
-    sha = hashlib.sha256('{}.{}'.format(ak_secret, cleartext).encode('ascii'))
+    sha = hashlib.sha256('{}.{}'.format(ak_secret, str(cleartext)).encode('ascii'))
     raw_hash = sha.digest()
     urlsafe_hash = base64.urlsafe_b64encode(raw_hash).decode('ascii')
     short_hash = urlsafe_hash[:6]
 
-    return '.'.join([cleartext, short_hash])
+    return '.'.join([str(cleartext), short_hash])

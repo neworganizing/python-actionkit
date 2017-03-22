@@ -1,6 +1,66 @@
+import datetime
+import re
+
 from django.db import models
+#for all the group by/having hacking
+from django.db.models.sql.constants import INNER, LOUTER
+from django.db.models.sql.datastructures import Join
+from django.db.models.sql.where import (
+    AND, OR, ExtraWhere, NothingNode, WhereNode,
+)
+from django.conf import settings
+from django.utils import timezone
 
 from actionkit import ActionKitGeneralError
+from actionkit.api.user import AKUserAPI
+
+class HavingGroupCondition(ExtraWhere):
+    contains_aggregate = True
+
+    def get_group_by_cols(self):
+        #django looks for this method with aggregates.  See models.Count code
+        return []
+
+
+class JoinField:
+    """We need this because of the extra restriction on the join
+    for add_userfield_to_queryset() and add_eventfield_to_queryset()
+    """
+    def __init__(self, basis, customfield, cols=None, customval=None):
+        self.basis = basis
+        self.customfield = customfield
+        self.customval = customval # if this is set, then it will be part of the join
+        #in the form of (('<main table join field>', '<joined table join field>'), )
+        self.cols = cols
+
+    def get_joining_columns(self):
+        if self.cols:
+            return self.cols
+        else:
+            return self.basis.get_joining_columns()
+
+    def get_extra_restriction(self, where_class, alias, related_alias):
+        #alias is core_userfield and related_alias is core_user
+        wheres = ["{}.name = %s".format(alias)]
+        params = [self.customfield,]
+        if self.customval:
+            wheres.append("{}.value = %s".format(alias))
+            params.append(self.customval)
+        return ExtraWhere(wheres, params)
+
+class ZipJoin:
+    @classmethod
+    def add_to_queryset(cls, qs):
+        return qs.query.join(
+            Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
+                 cls(), True))
+
+
+    def get_joining_columns(self):
+        return (('zip', 'zip'),)
+
+    def get_extra_restriction(self, where_class, alias, related_alias):
+        return None
 
 class _akit_model(models.Model):
 
@@ -10,6 +70,13 @@ class _akit_model(models.Model):
             raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
         elif save_mode == 'api' and hasattr(self, 'api_save'):
             self.api_save(**kwargs)
+            updated = bool(self.id) #assuming just updating for now
+            models.signals.post_save.send(sender=self.__class__,
+                                          instance=self,
+                                          created=(not updated),
+                                          update_fields=None,
+                                          raw=True)
+
 
     class Meta:
         abstract = True
@@ -20,7 +87,7 @@ class CorePage(_akit_model):
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     hosted_with = models.ForeignKey('CoreHostingplatform')
     url = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
@@ -71,8 +138,8 @@ class ReportsReport(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
-    short_name = models.CharField(max_length=765, unique=True, blank=True)
+    name = models.TextField(max_length=765, unique=True)
+    short_name = models.TextField(max_length=765, unique=True, blank=True)
     description = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
     run_every = models.CharField(max_length=765)
@@ -158,7 +225,7 @@ class CoreTargetgroup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     type = models.CharField(max_length=765)
     readonly = models.IntegerField()
     class Meta(_akit_model.Meta):
@@ -184,7 +251,7 @@ class AuthMessage(_akit_model):
 class AuthPermission(_akit_model):
     name = models.CharField(max_length=150)
     content_type = models.ForeignKey('DjangoContentType')
-    codename = models.CharField(max_length=300, unique=True)
+    codename = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'auth_permission'
 
@@ -227,14 +294,14 @@ class AxesAccessattempt(_akit_model):
         db_table = u'axes_accessattempt'
 
 class Cache(_akit_model):
-    cache_key = models.CharField(max_length=765, primary_key=True)
+    cache_key = models.TextField(max_length=765, primary_key=True)
     value = models.TextField()
     expires = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'cache'
 
 class CeleryTaskmeta(_akit_model):
-    task_id = models.CharField(max_length=765, unique=True)
+    task_id = models.TextField(max_length=765, unique=True)
     status = models.CharField(max_length=150)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
@@ -243,7 +310,7 @@ class CeleryTaskmeta(_akit_model):
         db_table = u'celery_taskmeta'
 
 class CeleryTasksetmeta(_akit_model):
-    taskset_id = models.CharField(max_length=765, unique=True)
+    taskset_id = models.TextField(max_length=765, unique=True)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -465,7 +532,7 @@ class CmsTemplateset(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     editable = models.IntegerField()
     lang = models.ForeignKey('CoreLanguage', null=True, blank=True)
@@ -492,7 +559,7 @@ class CmsUploadedfile(_akit_model):
     bucket = models.CharField(max_length=765)
     directory = models.CharField(max_length=765)
     filename = models.CharField(max_length=765)
-    url = models.CharField(max_length=765, unique=True)
+    url = models.TextField(max_length=765, unique=True)
     etag = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'cms_uploadedfile'
@@ -544,7 +611,7 @@ class CoreAllowedpagefield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_allowedpagefield'
@@ -553,7 +620,7 @@ class CoreAlloweduserfield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_alloweduserfield'
@@ -609,7 +676,7 @@ class CoreBuiltintranslation(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     iso_code = models.CharField(max_length=30)
     translations = models.TextField()
     class Meta(_akit_model.Meta):
@@ -648,7 +715,7 @@ class CoreCandidate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     portrait_url = models.CharField(max_length=765)
     description = models.TextField()
     status = models.CharField(max_length=765)
@@ -678,7 +745,7 @@ class CoreClick(_akit_model):
         db_table = u'core_click'
 
 class CoreClickurl(_akit_model):
-    url = models.CharField(max_length=765, unique=True)
+    url = models.TextField(max_length=765, unique=True)
     page = models.ForeignKey('CorePage', null=True, blank=True)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -687,7 +754,7 @@ class CoreClickurl(_akit_model):
 class CoreClientdomain(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    domain = models.CharField(max_length=765, unique=True)
+    domain = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_clientdomain'
 
@@ -716,7 +783,7 @@ class CoreDonationHpcRule(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     which_amount = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule'
@@ -774,7 +841,7 @@ class CoreDonationupdatepage(CorePage):
         db_table = u'core_donationupdatepage'
 
 class CoreEmailtemplate(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     wrapper = models.ForeignKey('CoreEmailwrapper')
     from_line = models.CharField(max_length=765)
     subject = models.CharField(max_length=765)
@@ -786,7 +853,7 @@ class CoreEmailwrapper(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     text_template = models.TextField()
     unsubscribe_text = models.TextField()
@@ -822,7 +889,7 @@ class CoreEventsignuppage(CorePage):
         db_table = u'core_eventsignuppage'
 
 class CoreFormfield(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_formfield'
 
@@ -830,12 +897,12 @@ class CoreFromline(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    from_line = models.CharField(max_length=765, unique=True)
+    from_line = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_fromline'
 
 class CoreHostingplatform(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     after_basics_redirect_url = models.CharField(max_length=765)
     after_basics_redirect_name = models.CharField(max_length=765)
     end_redirect_url = models.CharField(max_length=765)
@@ -861,7 +928,7 @@ class CoreLanguage(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     translations = models.TextField()
     iso_code = models.CharField(max_length=30, blank=True)
     inherit_from_id = models.IntegerField(null=True, blank=True)
@@ -899,7 +966,7 @@ class CoreList(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     is_default = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_list'
@@ -1086,7 +1153,7 @@ class CoreMultilingualcampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_multilingualcampaign'
 
@@ -1305,7 +1372,7 @@ class CorePrinttemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     header_html = models.TextField()
     template = models.TextField()
     footer_html = models.TextField()
@@ -1326,7 +1393,7 @@ class CoreProduct(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.TextField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
     shippable = models.IntegerField()
@@ -1379,7 +1446,7 @@ class CoreRecurringdonortargetingoption(_akit_model):
         db_table = u'core_recurringdonortargetingoption'
 
 class CoreRedirect(_akit_model):
-    short_code = models.CharField(max_length=765, unique=True, blank=True)
+    short_code = models.TextField(max_length=765, unique=True, blank=True)
     url = models.CharField(max_length=12288)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -1444,7 +1511,7 @@ class CoreSubscription(_akit_model):
 class CoreSubscriptionchangetype(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_subscriptionchangetype'
@@ -1473,7 +1540,7 @@ class CoreTag(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     times_used = models.IntegerField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_tag'
@@ -1647,10 +1714,170 @@ class CoreUploadwarning(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'core_uploadwarning'
 
+
+class CoreUserManager(models.Manager):
+    """
+    This manager includes a bunch of methods that alter a queryset to do a
+    reverse join -- i.e. when we query CoreUser, but we want some data
+    joined to it where the *other* table (e.g. CoreUserField or CorePhone)
+    has a ForeignKey pointing to CoreUser.
+
+    Django (AFAIK) doesn't have a bunch of facilities for that, so this is
+    fairly 'low-level' Django ORM hacking -- adding the joins manually.
+
+    It's worth noting, if we 'just' wanted to get a specific query, then
+    Django *does* have a raw sql API.  However:
+    1. That's not compatible with the Django Admin which we are using usefully
+    2. We'd still be met with difficulty in composing queries together --
+       i.e. the whole point of using an ORM is making conditions composable
+       (adding conditions together/incrementally)
+    """
+
+    def action_counts(self, actiontype, min_count):
+        qs = super(CoreUserManager, self).get_queryset()
+        return CoreUserManager.action_counts_filter(qs, actiontype, min_count)
+
+    @classmethod
+    def action_counts_filter(cls, qs, actiontype, min_count=1, since_days=None):
+        # the main reason we have to be this lowlevel is adding the 'HAVING' clause.
+        # otherwise, django's extra() or aggregate() would be fine
+        assert(issubclass(actiontype, CoreAction))
+
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        actionalias = qs.query.join(Join('core_action', qs.query.get_initial_alias(), 'core_action', INNER,
+                                   CoreUser._meta.fields_map['actions'], False))
+        qs.query.join(Join(actiontype._meta.db_table, actionalias, 'acounts_atype', INNER,
+                                               CoreAction._meta.fields_map[actiontype._meta.model_name],
+                                               False))
+        #group by everything except our aggregate annotation 
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('actions__id'), 'action_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.id, core_user.id) >= %s'.format(actionalias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+ 
+        if since_days:
+            since = timezone.now() - datetime.timedelta(days=since_days)
+            qs = qs.extra(where=['{}.created_at > %s'.format(actionalias)], params=[since])
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+
+    @classmethod
+    def actionfield_filter(cls, qs, actionfield_name, actionfield_value=None, pages=None, min_count=1, since_days=None):
+        # note this is tweaked from the method above action_counts_filter
+
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        actionalias = qs.query.join(Join('core_action', qs.query.get_initial_alias(), 'core_action', INNER,
+                                   CoreUser._meta.fields_map['actions'], False))
+        actionfield_alias = qs.query.join(Join(ActionField._meta.db_table, actionalias, 'avals_val', INNER,
+                                               Action._meta.fields_map['customfields'],
+                                               False))
+        #group by everything except our aggregate annotation
+        # this is generically problematic, because if we need to group by other things,
+        #  then this will fail
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('actions__value'), 'actionval_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.value, core_user.id) >= %s'.format(actionfield_alias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+
+        where2 = ExtraWhere(["{af}.name = %s".format(af=actionfield_alias)],(actionfield_name,))
+        qs.query.where.add(where2, AND)
+        if actionfield_value:
+            where3 = ExtraWhere(["{af}.value = %s".format(af=actionfield_alias)],(actionfield_value,))
+            qs.query.where.add(where3, AND)
+        if pages:
+            qs = qs.extra(where=['{}.page_id IN %s'.format(actionalias)], params=[pages])
+            
+        if since_days:
+            since = timezone.now() - datetime.timedelta(days=since_days)
+            qs = qs.extra(where=['{}.created_at > %s'.format(actionalias)], params=[since])
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+    @classmethod
+    def userfield_filter(cls, qs, userfield_name, userfield_value=None, min_count=1, search=False):
+        # note this is tweaked from the method above action_counts_filter
+        # min_count is *mostly* useless, but i think it does actually store multiple user values occasionally, or always.
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', INNER,
+                                      CoreUser._meta.fields_map['customfields'], False))
+
+        #group by everything except our aggregate annotation
+        # this is generically problematic, because if we need to group by other things,
+        #  then this will fail
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('customfields__name'), 'uf_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.value, core_user.id) >= %s'.format(uf_alias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+
+        where2 = ExtraWhere(["{uf}.name = %s".format(uf=uf_alias)],(userfield_name,))
+        qs.query.where.add(where2, AND)
+        if userfield_value:
+            op = '=' if not search else 'LIKE'
+            where3 = ExtraWhere(["{uf}.value {op} %s".format(uf=uf_alias, op=op)],(userfield_value,))
+            qs.query.where.add(where3, AND)
+            
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+    @classmethod
+    def add_location_to_queryset(cls, qs):
+        """
+        Joins core_location to the query
+        """
+        qa = qs.query.join(Join('core_location', qs.query.get_initial_alias(), 'core_location', LOUTER,
+                                         CoreUser._meta.fields_map['location'], True))
+
+        qs = qs.extra(select={
+            'us_district': '%s.us_district'.format(qa=qa),
+        })
+        return qs
+
+    @classmethod
+    def add_phone_to_queryset(cls, qs, no_groupby=False):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        phone_alias = qs.query.join(Join('core_phone', qs.query.get_initial_alias(), 'core_phone', LOUTER,
+                                         CoreUser._meta.fields_map['phones'], True))
+
+        if not no_groupby:
+            #group by everything except our aggregate annotation (bad general assumption)
+            qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs = qs.extra(select={
+            'first_phone': '%s.normalized_phone' % phone_alias,
+            'first_phone_type': '%s.type' % phone_alias,
+            'first_phone_source': '%s.source' % phone_alias,
+        })
+        return qs
+
+    @classmethod
+    def add_userfield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
+        userattr = 'userfield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def action_value_filter(cls, qs, fieldname, min_count=1, since_days=None):
+        return qs
+
+        
 class CoreUser(_akit_model):
+    objects = CoreUserManager()
+
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    email = models.CharField(max_length=765, unique=True)
+    email = models.TextField(max_length=765, unique=True)
     prefix = models.CharField(max_length=765)
     first_name = models.CharField(max_length=765)
     middle_name = models.CharField(max_length=765)
@@ -1671,7 +1898,6 @@ class CoreUser(_akit_model):
     lang = models.ForeignKey('CoreLanguage', null=True, blank=True)
     rand_id = models.IntegerField()
 
-
     # Return Fields As A Dictionary
     def custom_fields(self):
         fields = {}
@@ -1689,8 +1915,16 @@ class CoreUser(_akit_model):
     def __str__(self):
         return u'%s %s' % (self.first_name, self.last_name)
 
+    def recent_phone(self):
+        #get's most recent phone and parses makes it readable
+        return getattr(self.phones.order_by('-id').first(), 'normalized_phone', None)
+    
     class Meta(_akit_model.Meta):
         db_table = 'core_user'
+        verbose_name_plural = 'Member Search'
+        permissions = (
+            ("csvswap", "Use CSV Swap to get member data"),
+        )
 
 class CoreUserfield(_akit_model):
     parent = models.ForeignKey('CoreUser', related_name='customfields')
@@ -1702,6 +1936,16 @@ class CoreUserfield(_akit_model):
 
     def __str__(self):
         return self.value
+
+    def api_save(self, **kwargs):
+        class aksettings:
+            AK_USER = settings.AK_USER
+            AK_PASSWORD = settings.AK_PASSWORD
+            AK_BASEURL = settings.AK_BASEURL
+            DEBUG = False
+
+        akapi = AKUserAPI(aksettings)
+        res = akapi.set_usertag(self.parent_id, {self.name: self.value})
 
         
 class CoreUsermailing(_akit_model):
@@ -1759,8 +2003,8 @@ class DjangoAdminLog(_akit_model):
 
 class DjangoContentType(_akit_model):
     name = models.CharField(max_length=300)
-    app_label = models.CharField(max_length=300, unique=True)
-    model = models.CharField(max_length=300, unique=True)
+    app_label = models.TextField(max_length=300, unique=True)
+    model = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'django_content_type'
 
@@ -1775,7 +2019,7 @@ class EventsCampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     public_create_page = models.IntegerField()
     use_title = models.IntegerField()
     default_title = models.CharField(max_length=765)
@@ -1800,8 +2044,89 @@ class EventsCampaign(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'events_campaign'
         verbose_name_plural = 'Event Campaigns'
+        ordering = ['-id'] #so recent campaigns are shown first
+
+    def __str__(self):
+        return '%s %s' % (
+            self.title,
+            self.starts_at.strftime('%m/%d/%y') if self.starts_at else '')
+
+
+class EventsEventManager(models.Manager):
+
+    def public_search(self):
+        return self.__class__.filter_public_search(self.get_queryset())
+
+    @classmethod
+    def filter_public_search(cls, qs, allow_full=False):
+        query = qs.filter(is_private=0,
+                          status="active",
+                          host_is_confirmed=1
+                      )
+        if not allow_full:
+            query = query.extra(where=['max_attendees > attendee_count'])
+        return query
+
+
+    @classmethod
+    def add_eventfield_to_queryset(cls, qs, fieldname, filtervalue=None):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        query_alias = qs.query.join(Join('events_eventfield', qs.query.get_initial_alias(), 'events_eventfield', LOUTER,
+                                         JoinField(EventsEvent._meta.fields_map['customfields'], fieldname), True))
+        #group by everything except our aggregate annotation (bad general assumption)
+        qs.query.group_by = [x.name for x in EventsEvent._meta.local_fields]
+
+        if filtervalue:
+            where = "{qa}.value = %s"
+            qs.query.where.add(ExtraWhere([where.format(qa=query_alias)], [filtervalue]), AND)
+
+        fieldname_id = '%s_id' % fieldname
+        qs = qs.extra(select={
+            fieldname: '%s.value' % query_alias,
+            fieldname_id: '%s.id' % query_alias,
+        })
+        return qs
+
+    @classmethod
+    def add_creator_userfield_to_queryset(cls, qs, userfieldname):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname,
+                                                cols=(('creator_id', 'parent_id'),)
+                                            ), True))
+        userattr = 'userfield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def filter_proximity(cls, qs, zip, radius, same_state=False):
+        """
+        Joins on ZipProximity and then filters on radius
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        query_alias = ZipJoin.add_to_queryset(qs)
+
+        qs.query.where.add(ExtraWhere(
+            ['{qa}.nearby=%s AND {qa}.distance < %s AND {qa}.same_state IN %s'.format(qa=query_alias)],
+            [zip, radius, ( (True,) if same_state else (True, False))]
+        ), AND)
+
+        qs = qs.extra(select={
+            'distance': '%s.distance' % query_alias,
+            'same_state': '%s.same_state' % query_alias,
+        })
+        return qs
+
 
 class EventsEvent(_akit_model):
+    objects = EventsEventManager()
+
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     address1 = models.CharField(max_length=765)
@@ -1820,7 +2145,12 @@ class EventsEvent(_akit_model):
     creator = models.ForeignKey('CoreUser')
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=96)
+    starts_at_utc = models.DateTimeField(null=True, blank=True)
+    ends_at_utc = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=96, choices=(('active', 'active'),
+                                                      ('cancelled', 'cancelled'),
+                                                      ('deleted', 'deleted'),
+                                                  ))
     host_is_confirmed = models.IntegerField()
     is_private = models.IntegerField(choices=((0, 'public'), (1, 'private')),
                                      verbose_name="private or public")
@@ -1836,6 +2166,20 @@ class EventsEvent(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'events_event'
         verbose_name_plural = 'Events'
+
+    def __str__(self):
+        return '%s (%s%s, %s)' % (
+            self.title,
+            self.starts_at.strftime('%m/%d/%y ') if self.starts_at else '',
+            self.city,
+            self.state
+        )
+
+    def act_as_host_link(self):
+        base_url = getattr(settings, 'AK_BASEURL', False)
+        if base_url:
+            return '%s/event/%s/%s/host/' % (base_url, self.campaign.name, self.id)
+
 
 class EventsEventfield(_akit_model):
     parent = models.ForeignKey('EventsEvent', related_name='customfields')
@@ -1886,7 +2230,7 @@ class ReportsQuerytemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_querytemplate'
@@ -1901,7 +2245,7 @@ class ReportsReportcategory(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'reports_reportcategory'
 
