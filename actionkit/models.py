@@ -2312,3 +2312,13 @@ class ZipProximity(_akit_model):
     distance = models.DecimalField(max_digits=3, decimal_places=1,
                                    help_text="Distance to second zip (?in miles)")
 
+    # These are attributes that allow you to make queries like:
+    # CoreUser.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    # EventsEvent.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    event = models.ForeignObject(EventsEvent, on_delete=models.DO_NOTHING,
+                                 from_fields=['zip'], to_fields=['zip'],
+                                 related_name='zipproximity')
+
+    user = models.ForeignObject(CoreUser, on_delete=models.DO_NOTHING,
+                                from_fields=['zip'], to_fields=['zip'],
+                                related_name='zipproximity')
