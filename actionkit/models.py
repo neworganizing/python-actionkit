@@ -1943,6 +1943,12 @@ class CoreUser(_akit_model):
     lang = models.ForeignKey('CoreLanguage', null=True, blank=True)
     rand_id = models.IntegerField()
 
+    # This allows filter queries like this:
+    # CoreUser.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    zipproximity = models.ForeignObject('ZipProximity', on_delete=models.DO_NOTHING,
+                                from_fields=['zip'], to_fields=['zip'],
+                                related_name='user')
+
     # Return Fields As A Dictionary
     def custom_fields(self):
         fields = {}
@@ -2208,6 +2214,13 @@ class EventsEvent(_akit_model):
     directions = models.TextField()
     note_to_attendees = models.TextField()
     notes = models.TextField()
+
+    # This enables filter queries like this:
+    # EventsEvent.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    zipproximity = models.ForeignObject('ZipProximity', on_delete=models.DO_NOTHING,
+                                from_fields=['zip'], to_fields=['zip'],
+                                related_name='event')
+
     class Meta(_akit_model.Meta):
         db_table = u'events_event'
         verbose_name_plural = 'Events'
@@ -2311,4 +2324,3 @@ class ZipProximity(_akit_model):
     same_state = models.NullBooleanField(null=True, default=None)
     distance = models.DecimalField(max_digits=3, decimal_places=1,
                                    help_text="Distance to second zip (?in miles)")
-
