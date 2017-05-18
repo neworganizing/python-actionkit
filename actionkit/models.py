@@ -2237,7 +2237,7 @@ class EventsEventfield(_akit_model):
 class EventsEventsignup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser')
+    user = models.ForeignKey('CoreUser', related_name='signups')
     event = models.ForeignKey('EventsEvent', related_name='signups')
     role = models.CharField(max_length=96, choices=(('host', 'Host'), ('attendee', 'Attendee')))
     status = models.CharField(max_length=96, choices=(('active', 'active'), ('deleted', 'deleted'), ('cancelled', 'cancelled')))
