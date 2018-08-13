@@ -1033,6 +1033,22 @@ class CoreLocation(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'core_location'
 
+
+class CoreUsergeofield(_akit_model):
+    """
+    user_id,id,value,name,updated_at, created_at
+    """
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    user = models.ForeignKey('CoreUser', related_name='geofields')
+    name = models.CharField(max_length=255)
+    value = models.CharField(max_length=255)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'core_usergeofield'
+
+
+
 class CoreLteaction(CoreAction):
     action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id')
     subject = models.CharField(max_length=240)
@@ -1903,12 +1919,24 @@ class CoreUserManager(models.Manager):
     @classmethod
     def add_userfield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
         """
-        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        Adds a userfield to a user queryset, possibly conditional on userfieldvalue
         """
         #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
         uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
                                       JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
         userattr = 'userfield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def add_usergeofield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
+        """
+        Adds a usergeofield to a user queryset, possibly conditional on userfieldvalue
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_usergeofield', qs.query.get_initial_alias(), 'core_usergeofield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
+        userattr = 'usergeofield_%s' % userfieldname
         qs = qs.extra(select={userattr: '%s.value' % uf_alias})
         return qs
 
