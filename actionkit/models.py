@@ -2303,6 +2303,42 @@ class EventsEventsignupfield(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'events_eventsignupfield'
 
+class EventsCampaignvolunteer(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    user = models.ForeignKey('CoreUser', related_name='eventemails', db_index=True)
+    campaign = models.ForeignKey('EventsCampaign', db_index=True)
+    is_approved = models.IntegerField()
+    status = models.CharField(max_length=32)  # todo: get status possibilities
+
+class EventsEmailbodylog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    body = models.TextField(null=True, blank=True)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emailbodylog'
+
+    def __str__(self):
+        return self.body
+
+class EventsEmaillog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    from_type = models.CharField(max_length=32)
+    to_type = models.CharField(max_length=32)
+    event = models.ForeignKey('EventsEvent', db_index=True)
+    from_user = models.ForeignKey('CoreUser', null=True, blank=True,
+                                  db_index=True,
+                                  related_name='eventemaillogs')
+    from_admin = models.OneToOneField('AuthUser', null=True, blank=True, db_index=True)
+    user_written_subject = models.TextField(null=True, blank=True)
+    body = models.ForeignKey('EventsEmailbodylog', db_index=True)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog'
+
+
 class ReportsDashboardreport(ReportsReport):
     report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id')
     template = models.TextField()
