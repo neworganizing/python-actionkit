@@ -2338,6 +2338,15 @@ class EventsEmaillog(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'events_emaillog'
 
+class EventsEmaillogToUsers(_akit_model):
+    user = models.ForeignKey('CoreUser', db_index=True,
+                             related_name='eventemaillogsreceived')
+    emaillog = models.ForeignKey('EventsEmaillog', db_index=True,
+                                 related_name='recipients')
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog_to_users'
+
 
 class ReportsDashboardreport(ReportsReport):
     report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id')
