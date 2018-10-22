@@ -1105,21 +1105,26 @@ class CoreMailingsubject(_akit_model):
 class CoreMailingtargeting(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    states = models.TextField(blank=True)
+    states = models.TextField(blank=True, null=True)
+    regions = models.TextField(blank=True, null=True)
     cds = models.TextField(blank=True)
-    state_senate_districts = models.TextField(blank=True)
-    state_house_districts = models.TextField(blank=True)
-    zips = models.TextField(blank=True)
-    zip_radius = models.IntegerField(null=True, blank=True)
-    counties = models.TextField(blank=True)
-    has_donated = models.IntegerField()
-    is_monthly_donor = models.IntegerField()
+    state_senate_districts = models.TextField(blank=True, null=True)
+    state_house_districts = models.TextField(blank=True, null=True)
+    zips = models.TextField(blank=True, null=True)
+    zip_radius = models.IntegerField(blank=True, null=True)
+    counties = models.TextField(blank=True, null=True)
+    countries = models.TextField(blank=True, null=True)
+    has_donated = models.BooleanField()
+    is_monthly_donor = models.BooleanField()
     activity_level = models.ForeignKey('CoreActivityleveltargetingoption', null=True, blank=True)
     raw_sql = models.TextField(blank=True)
-    is_delivery = models.IntegerField()
+    is_delivery = models.BooleanField()
     delivery_job = models.ForeignKey('CorePetitiondeliveryjob', null=True, blank=True)
     campaign_radius = models.IntegerField(null=True, blank=True)
-    countries = models.TextField(blank=True)
+    campaign_samestate_only = models.BooleanField()
+    mirror_mailing_excludes = models.BooleanField()
+    campaign_same_district_only = models.BooleanField(default=False)
+
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting'
 
@@ -2297,6 +2302,51 @@ class EventsEventsignupfield(_akit_model):
     value = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'events_eventsignupfield'
+
+class EventsCampaignvolunteer(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    user = models.ForeignKey('CoreUser', related_name='eventemails', db_index=True)
+    campaign = models.ForeignKey('EventsCampaign', db_index=True)
+    is_approved = models.IntegerField()
+    status = models.CharField(max_length=32)  # todo: get status possibilities
+
+class EventsEmailbodylog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    body = models.TextField(null=True, blank=True)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emailbodylog'
+
+    def __str__(self):
+        return self.body
+
+class EventsEmaillog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    from_type = models.CharField(max_length=32)
+    to_type = models.CharField(max_length=32)
+    event = models.ForeignKey('EventsEvent', db_index=True)
+    from_user = models.ForeignKey('CoreUser', null=True, blank=True,
+                                  db_index=True,
+                                  related_name='eventemaillogs')
+    from_admin = models.OneToOneField('AuthUser', null=True, blank=True, db_index=True)
+    user_written_subject = models.TextField(null=True, blank=True)
+    body = models.ForeignKey('EventsEmailbodylog', db_index=True)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog'
+
+class EventsEmaillogToUsers(_akit_model):
+    user = models.ForeignKey('CoreUser', db_index=True,
+                             related_name='eventemaillogsreceived')
+    emaillog = models.ForeignKey('EventsEmaillog', db_index=True,
+                                 related_name='recipients')
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog_to_users'
+
 
 class ReportsDashboardreport(ReportsReport):
     report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id')
