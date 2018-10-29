@@ -2010,6 +2010,21 @@ class CoreUser(_akit_model):
             ("csvswap", "Use CSV Swap to get member data"),
         )
 
+    def api_save(self, **kwargs):
+        class aksettings:
+            AK_USER = settings.AK_USER
+            AK_PASSWORD = settings.AK_PASSWORD
+            AK_BASEURL = settings.AK_BASEURL
+            DEBUG = False
+
+        akapi = AKUserAPI(aksettings)
+        if kwargs:
+            if self.id:
+                res = akapi.update_user(self.id, kwargs)
+            elif 'email' in kwargs:
+                res = akapi.create_user(kwargs)
+
+
 class CoreUserfield(_akit_model):
     parent = models.ForeignKey('CoreUser', related_name='customfields')
     name = models.CharField(max_length=765)

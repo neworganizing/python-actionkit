@@ -26,6 +26,13 @@ class AKUserAPI(base.ActionKitAPI):
             data=json.dumps({ 'fields': name_or_dict }))
         return self._http_return(res)
 
+    def update_user(self, user_id, update_dict):
+        res = self.client.patch(
+            #the '/' at the end is IMPORTANT!
+            '%s/rest/v1/user/%s/' % (self.base_url, user_id),
+            data=json.dumps(update_dict))
+        return self._http_return(res)
+
     def add_allowed_usertag(self, userfield_name):
         res = self.client.post(
             '%s/rest/v1/alloweduserfield/' % self.base_url,
