@@ -2239,7 +2239,8 @@ class EventsEvent(_akit_model):
     country = models.CharField(max_length=765)
     longitude = models.FloatField(null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
-    us_district = models.CharField(max_length=15, verbose_name="US district")
+    us_district = models.CharField(max_length=5, verbose_name="US district",
+                                   db_index=True)
     campaign = models.ForeignKey('EventsCampaign', related_name='events')
     title = models.CharField(max_length=765)
     creator = models.ForeignKey('CoreUser')
