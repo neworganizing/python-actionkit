@@ -97,7 +97,11 @@ class AKEventAPI(base.ActionKitAPI):
             '%s/rest/v1/eventsignup/' % self.base_url,
             json=data
         )
-        return {'res': result}
+        rv = {'res': result}
+        if result.headers.get('Location'):
+            rv['id'] = re.findall(r'(\d+)/$', result.headers['Location'])[0]
+
+        return rv
 
     def create_user_signup(self, event_id, page_name, fields):
         assert(fields.get('email') or fields.get('akid'))
