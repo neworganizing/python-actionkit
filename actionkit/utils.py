@@ -1,6 +1,7 @@
 import base64
 import datetime
 import hashlib
+import Crypto.Random
 import re
 
 
@@ -73,3 +74,38 @@ def validate_datemarked_akid(ak_secret, akid, prefix='d', days_expire=8):
         #token expires after a day (should we make it 3?)
         and date_in_range(akid[len(prefix):len(prefix) + 6])
         and validate_akid(ak_secret, akid))
+
+# Aili's experiment below this line
+
+def randstr32():
+    """returns base-32 encoded random garbage"""
+    return base64.b32encode(Crypto.Random.new().read(24)).lower()
+
+class User:
+    HASH_SEP='.'
+    BRAINTREE_ONECLICK_SECRET = "aoasdkfwoe02395sdfbsjrohteruingsdlkgnaiuefa10394u20sld" #made up the secret--will need to get the real one.
+    def __init__(self, akid, token_id):
+        self.akid = akid
+        self.token_id = token_id
+        self.DATETIME_FORMAT = "%Y%m%d%H%M"
+    def oneclick_hash(cls, contents):
+        "Return a long base64 hash of contents, with secret and site"
+        parts = [cls.BRAINTREE_ONECLICK_SECRET, 'moveon', contents]
+        sha = hashlib.sha256('-'.join(parts))
+        raw_hash = sha.digest()
+        return base64.urlsafe_b64encode(raw_hash)
+
+    def _append_hash(cls, *parts):
+        parts_str = cls.HASH_SEP.join(parts)
+        return cls.HASH_SEP.join([parts_str, cls.oneclick_hash(parts_str)[:10]])
+
+    def payment_hash(self):
+        parts = [
+            self.token_id,
+            datetime.now().strftime(self.DATETIME_FORMAT),
+            randstr32()[:8],
+        ]
+        return self._append_hash(*parts)
+
+    def quickpay_url(self):
+        return 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash=' + self.payment_hash() + '&akid=' + self.akid
