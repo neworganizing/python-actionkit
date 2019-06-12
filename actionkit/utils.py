@@ -1,5 +1,5 @@
 import base64
-import datetime
+from datetime import datetime
 import hashlib
 import Crypto.Random
 import re
@@ -81,31 +81,24 @@ def randstr32():
     """returns base-32 encoded random garbage"""
     return base64.b32encode(Crypto.Random.new().read(24)).lower()
 
-class User:
-    HASH_SEP='.'
-    BRAINTREE_ONECLICK_SECRET = "aoasdkfwoe02395sdfbsjrohteruingsdlkgnaiuefa10394u20sld" #made up the secret--will need to get the real one.
-    def __init__(self, akid, token_id):
-        self.akid = akid
-        self.token_id = token_id
-        self.DATETIME_FORMAT = "%Y%m%d%H%M"
-    def oneclick_hash(cls, contents):
-        "Return a long base64 hash of contents, with secret and site"
-        parts = [cls.BRAINTREE_ONECLICK_SECRET, 'moveon', contents]
-        sha = hashlib.sha256('-'.join(parts))
-        raw_hash = sha.digest()
-        return base64.urlsafe_b64encode(raw_hash)
+def oneclick_hash(braintree_secret, contents):
+    "Return a long base64 hash of contents, with secret and site"
+    parts = [braintree_secret, 'moveon', contents]
+    sha = hashlib.sha256('-'.join(parts))
+    raw_hash = sha.digest()
+    return base64.urlsafe_b64encode(raw_hash)
 
-    def _append_hash(cls, *parts):
-        parts_str = cls.HASH_SEP.join(parts)
-        return cls.HASH_SEP.join([parts_str, cls.oneclick_hash(parts_str)[:10]])
+def _append_hash(hash_separator, braintree_secret, *parts):
+    parts_str = hash_separator.join(parts)
+    return hash_separator.join([parts_str, oneclick_hash(braintree_secret, parts_str)[:10]])
 
-    def payment_hash(self):
-        parts = [
-            self.token_id,
-            datetime.now().strftime(self.DATETIME_FORMAT),
-            randstr32()[:8],
-        ]
-        return self._append_hash(*parts)
+def payment_hash(token_id, datetime_format, braintree_secret, hash_separator):
+    parts = [
+        token_id,
+        datetime.now().strftime(datetime_format),
+        randstr32()[:8],
+    ]
+    return _append_hash(hash_separator, braintree_secret, *parts)
 
-    def quickpay_url(self):
-        return 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash=' + self.payment_hash() + '&akid=' + self.akid
+def quickpay_url(token_id, datetime_format, akid, braintree_secret, hash_separator):
+    return 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash=' + payment_hash(token_id, datetime_format, braintree_secret, hash_separator) + '&akid=' + akid
