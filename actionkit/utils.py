@@ -100,5 +100,6 @@ def payment_hash(token_id, datetime_format, braintree_secret, hash_separator):
     ]
     return _append_hash(hash_separator, braintree_secret, *parts)
 
-def quickpay_url(token_id, datetime_format, akid, braintree_secret, hash_separator):
+def quickpay_url(token_id, datetime_format, user_id, braintree_secret, hash_separator, ak_secret):
+    akid = generate_akid(ak_secret, user_id)
     return 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash=' + payment_hash(token_id, datetime_format, braintree_secret, hash_separator) + '&akid=' + akid
