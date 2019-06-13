@@ -13,7 +13,7 @@ class PaymentUrlGeneratorTest(unittest.TestCase):
         self.braintree_secret = settings.BRAINTREE_ONECLICK_SECRET
         self.ak_secret = settings.AK_SECRET
     def test_quickpay_url(self): #all of these values depend on that user being the specific one it is.
-        url = utils.quickpay_url(self.token_id, self.datetime_format, self.user_id, self.braintree_secret, self.hash_separator, self.ak_secret)
+        url = utils.quickpay_url(self.datetime_format, self.user_id, self.hash_separator)
         self.assertIn("act.moveon.org/donate/civ-donation-quickpay?", url)
         self.assertIn("payment_hash=3nmqoul2", url)
         self.assertIn("&akid=.18715613", url)
