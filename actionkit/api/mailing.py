@@ -5,6 +5,14 @@ import sys
 
 from actionkit.api.base import ActionKitAPI
 
+try:
+    import urllib.parse
+    encode_url = urllib.parse.urlencode
+except ImportError:
+    # python2
+    import urllib
+    encode_url = urllib.urlencode
+
 class AKMailingAPI(ActionKitAPI):
 
     def update_mailing(self, mailing_id, update_dict):
@@ -21,15 +29,18 @@ class AKMailingAPI(ActionKitAPI):
             res = self.client.get(
                 #the '/' at the end is IMPORTANT!
                 '%s/rest/v1/mailing/%s/' % (self.base_url, mailing_id))
+            return {'res': res,
+                    'mailing': res.json() if res.status_code == 200 else None}
         elif query_params:
             res = self.client.get(
                 #the '/' at the end is IMPORTANT!
-                '%s/rest/v1/mailing/' % (self.base_url), json=query_params)
+                '%s/rest/v1/mailing/?%s' % (self.base_url, encode_url(query_params)))
         else:
             res = self.client.get(
                 '{}/rest/v1/mailing/'.format(self.base_url))
         return {'res': res,
-                'mailings': res.json()['objects'] if res.status_code == 200 else None}
+                'mailings': res.json()['objects'] if res.status_code == 200 else None
+               }
 
     def create_mailing(self, mailing_dict):
         if getattr(self.settings, 'AK_TEST', False):
