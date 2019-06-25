@@ -40,7 +40,7 @@ class AKMailerAPI(ActionKitAPI):
             return TEST_DATA.get('rebuild_mailing')
         res = self.client.post(
             #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/mailer/%s/rebuild/' % (self.base_url, mailing_id),
+            '%s/rest/v1/mailer/%s/rebuild/' % (self.base_url, mailing_id)
             )
         if res.status_code == 201:
             rv = {'res': res}
@@ -78,7 +78,7 @@ class AKMailerAPI(ActionKitAPI):
             return TEST_DATA.get('queue_mailing')
         res = self.client.post(
             #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/mailer/%s/queue/' % (self.base_url, mailing_id),
+            '%s/rest/v1/mailer/%s/queue/' % (self.base_url, mailing_id)
             )
         if res.status_code == 201:
             rv = {'res': res}
@@ -94,10 +94,9 @@ class AKMailerAPI(ActionKitAPI):
             return TEST_DATA.get('get_queue_status')
         res = self.client.get(
             #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id),
+            '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
             )
         if res.status_code == 200:
-            import pdb; pdb.set_trace()
             res_dict = res.json()
             rv = {'res': res}
             rv['status'] = res_dict.get('status', None)
