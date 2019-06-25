@@ -45,7 +45,7 @@ class AKMailerAPI(ActionKitAPI):
         if res.status_code == 201:
             rv = {'res': res}
             if res.headers.get('Location'):
-                rv['status'] = res.headers.get('Location')
+                rv['status_url'] = res.headers.get('Location')
             return rv
         else:
             return None
@@ -83,7 +83,7 @@ class AKMailerAPI(ActionKitAPI):
         if res.status_code == 201:
             rv = {'res': res}
             if res.headers.get('Location'):
-                rv['status'] = res.headers.get('Location')
+                rv['status_url'] = res.headers.get('Location')
         return rv
 
     def get_queue_status(self, mailing_id):
@@ -97,7 +97,8 @@ class AKMailerAPI(ActionKitAPI):
             '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id),
             )
         if res.status_code == 200:
-            res_dict = json.loads(res.text)
+            import pdb; pdb.set_trace()
+            res_dict = res.json()
             rv = {'res': res}
             rv['status'] = res_dict.get('status', None)
             rv['finished'] = res_dict.get('finished', None)
@@ -122,7 +123,7 @@ class AKMailerAPI(ActionKitAPI):
             )
         if res.status_code == 202:
             rv = {'res': res}
-            rv['status'] = '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
+            rv['status_url'] = '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
             return rv 
         else:
             return None
@@ -136,7 +137,7 @@ class AKMailerAPI(ActionKitAPI):
         },
         'rebuild_mailing': {
             'res': None, 
-            'status': 'https://act.example.org/rest/v1/mailer/1235/rebuild/status/1234/'
+            'status_url': 'https://act.example.org/rest/v1/mailer/1235/rebuild/status/1234/'
         },
         'poll_rebuild_status': {
             'res': None,
@@ -146,7 +147,7 @@ class AKMailerAPI(ActionKitAPI):
         },
         'queue_mailing': {
             'res': None,
-            'status': 'https://act.example.org/rest/v1/mailer/1235/progress/'
+            'status_url': 'https://act.example.org/rest/v1/mailer/1235/progress/'
         },
         'get_queue_status': {
             'res': None, 
