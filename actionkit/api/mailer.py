@@ -35,6 +35,17 @@ class AKMailerAPI(ActionKitAPI):
         else:
             return None
 
+    def update_mailing(self, mailing_id, update_dict):
+    """
+        Similar to PATCHing to /mailing/, but /mailing/ always asks
+        for values for all required fields and /mailer/ doesn't.
+    """
+        res = self.client.patch(
+            #the '/' at the end is IMPORTANT!
+            '%s/rest/v1/mailer/%s/' % (self.base_url, mailing_id),
+            data=json.dumps(update_dict))
+        return self._http_return(res)
+
     def rebuild_mailing(self, mailing_id):
         if getattr(self.settings, 'AK_TEST', False):
             return TEST_DATA.get('rebuild_mailing')
@@ -129,34 +140,34 @@ class AKMailerAPI(ActionKitAPI):
 
 
 
-    TEST_DATA = {
-        'copy_mailing': {
-            'res': None,
-            'id': '1235'
-        },
-        'rebuild_mailing': {
-            'res': None, 
-            'status_url': 'https://act.example.org/rest/v1/mailer/1235/rebuild/status/1234/'
-        },
-        'poll_rebuild_status': {
-            'res': None,
-            'finished': True, 
-            'finished_at': '2019-06-24T21:49:08', 
-            'target_count': 1742
-        },
-        'queue_mailing': {
-            'res': None,
-            'status_url': 'https://act.example.org/rest/v1/mailer/1235/progress/'
-        },
-        'get_queue_status': {
-            'res': None, 
-            'status': 'scheduled', 
-            'finished': False, 
-            'progress': None, 
-            'target_count': 1742, 
-            'started_at': None
-        }
+TEST_DATA = {
+    'copy_mailing': {
+        'res': None,
+        'id': '1235'
+    },
+    'rebuild_mailing': {
+        'res': None, 
+        'status_url': 'https://act.example.org/rest/v1/mailer/1235/rebuild/status/1234/'
+    },
+    'poll_rebuild_status': {
+        'res': None,
+        'finished': True, 
+        'finished_at': '2019-06-24T21:49:08', 
+        'target_count': 1742
+    },
+    'queue_mailing': {
+        'res': None,
+        'status_url': 'https://act.example.org/rest/v1/mailer/1235/progress/'
+    },
+    'get_queue_status': {
+        'res': None, 
+        'status': 'scheduled', 
+        'finished': False, 
+        'progress': None, 
+        'target_count': 1742, 
+        'started_at': None
     }
+}
 
 
 
