@@ -36,6 +36,10 @@ class AKMailerAPI(ActionKitAPI):
             return None
 
     def update_mailing(self, mailing_id, update_dict):
+    """
+        Similar to PATCHing to /mailing/, but /mailing/ always asks
+        for values for all required fields and /mailer/ doesn't.
+    """
         res = self.client.patch(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/' % (self.base_url, mailing_id),
