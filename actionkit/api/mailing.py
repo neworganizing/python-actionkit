@@ -164,17 +164,34 @@ class AKMailingAPI(ActionKitAPI):
             return TEST_DATA.get('queue_mailing')
         queue = self.get_queue_status(mailing_id)
         if queue:
-            if queue['status'] in ['queued', 'sending']:
+            stop = None
+            if queue['status'] in ['queued','sending']:
                 stop = self.stop_mailing(mailing_id = mailing_id)
-                if not stop:
+                if stop:
+                    print('Mailing {} stopped.'.format(mailing_id))
+                else:
+                    print('Could not stop mailing {}.'.format(mailing_id))
                     return None
+
             update = self.update_mailing(mailing_id, {'scheduled_for': new_send_time})
             if update:
+                print('Mailing {} updated to send at {}.'.format(mailing_id, new_send_time))
+            else:
+                print('Could not update mailing {} with new send time.'.format(mailing_id))
+                return None
+            if update and stop:
                 requeue = self.queue_mailing(mailing_id)
                 if requeue:
-                    print 'Mailing {} successfully rescheduled for {}'.format(mailing_id, new_send_time)
-                    return requeue       
-        return None
+                    print('Mailing {} queued to send.'.format(mailing_id))
+                    return requeue
+                else:
+                    print ('Unable to requeue mailing {}.'.format(mailing_id))
+                    return None
+            if update and not stop:
+                return update
+        else: # if queue
+            print('Could not get queue status for mailing {}.'.format(mailing_id))
+            return None
     
 
     TEST_DATA = {
