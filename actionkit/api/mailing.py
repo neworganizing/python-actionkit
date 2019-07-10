@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 import requests
 import sys
 
 from actionkit.api.base import ActionKitAPI
+
+logger = logging.getLogger(__name__)
 
 class AKMailingAPI(ActionKitAPI):
 
@@ -168,29 +171,29 @@ class AKMailingAPI(ActionKitAPI):
             if queue['status'] in ['queued','sending']:
                 stop = self.stop_mailing(mailing_id = mailing_id)
                 if stop:
-                    print('Mailing {} stopped.'.format(mailing_id))
+                    logger.info('Mailing {} stopped.'.format(mailing_id))
                 else:
-                    print('Could not stop mailing {}.'.format(mailing_id))
+                    logger.error('Could not stop mailing {}.'.format(mailing_id))
                     return None
 
             update = self.update_mailing(mailing_id, {'scheduled_for': new_send_time})
             if update:
-                print('Mailing {} updated to send at {}.'.format(mailing_id, new_send_time))
+                logger.info('Mailing {} updated to send at {}.'.format(mailing_id, new_send_time))
             else:
-                print('Could not update mailing {} with new send time.'.format(mailing_id))
+                logger.error('Could not update mailing {} with new send time.'.format(mailing_id))
                 return None
             if update and stop:
                 requeue = self.queue_mailing(mailing_id)
                 if requeue:
-                    print('Mailing {} queued to send.'.format(mailing_id))
+                    logger.info('Mailing {} queued to send.'.format(mailing_id))
                     return requeue
                 else:
-                    print ('Unable to requeue mailing {}.'.format(mailing_id))
+                    logger.error('Unable to requeue mailing {}.'.format(mailing_id))
                     return None
             if update and not stop:
                 return update
         else: # if queue
-            print('Could not get queue status for mailing {}.'.format(mailing_id))
+            logger.error('Could not get queue status for mailing {}.'.format(mailing_id))
             return None
     
 
