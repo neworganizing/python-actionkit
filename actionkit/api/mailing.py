@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 import requests
 import sys
 
 from actionkit.api.base import ActionKitAPI
+
+logger = logging.getLogger(__name__)
 
 class AKMailingAPI(ActionKitAPI):
 
@@ -153,6 +156,44 @@ class AKMailingAPI(ActionKitAPI):
             rv['status_url'] = '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
             return rv 
         else:
+            return None
+
+    def reschedule_mailing(self, mailing_id, new_send_time):
+        """
+            Scheduled_send_time should be in UTC and be an ISO 8601 string, 
+
+        """
+        if getattr(self.settings, 'AK_TEST', False):
+            return TEST_DATA.get('queue_mailing')
+        queue = self.get_queue_status(mailing_id)
+        if queue:
+            stop = None
+            if queue['status'] in ['queued','sending']:
+                stop = self.stop_mailing(mailing_id = mailing_id)
+                if stop:
+                    logger.info('Mailing {} stopped.'.format(mailing_id))
+                else:
+                    logger.error('Could not stop mailing {}.'.format(mailing_id))
+                    return None
+
+            update = self.update_mailing(mailing_id, {'scheduled_for': new_send_time})
+            if update:
+                logger.info('Mailing {} updated to send at {}.'.format(mailing_id, new_send_time))
+            else:
+                logger.error('Could not update mailing {} with new send time.'.format(mailing_id))
+                return None
+            if update and stop:
+                requeue = self.queue_mailing(mailing_id)
+                if requeue:
+                    logger.info('Mailing {} queued to send.'.format(mailing_id))
+                    return requeue
+                else:
+                    logger.error('Unable to requeue mailing {}.'.format(mailing_id))
+                    return None
+            if update and not stop:
+                return update
+        else: # if queue
+            logger.error('Could not get queue status for mailing {}.'.format(mailing_id))
             return None
     
 
