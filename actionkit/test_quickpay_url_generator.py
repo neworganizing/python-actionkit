@@ -1,5 +1,6 @@
 from datetime import datetime
 import re
+import psycopg2
 import settings
 import unittest
 import utils
@@ -12,8 +13,18 @@ class PaymentUrlGeneratorTest(unittest.TestCase):
         self.hash_separator = '.'
         self.braintree_secret = settings.BRAINTREE_ONECLICK_SECRET
         self.ak_secret = settings.AK_SECRET
+        self.db_connection = db_connection=psycopg2.connect(
+            dbname=settings.REDSHIFT_DATABASE,
+            host=settings.REDSHIFT_HOST,
+            port= settings.REDSHIFT_PORT,
+            user= settings.REDSHIFT_USER,
+            password= settings.REDSHIFT_PASSWORD
+        )
+        self.ak_secret = settings.AK_SECRET
+        self.braintree_secret = settings.BRAINTREE_ONECLICK_SECRET
+        self.base_url = 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash='
     def test_quickpay_url(self): #all of these values depend on that user being the specific one it is.
-        url = utils.quickpay_url(self.datetime_format, self.user_id, self.hash_separator)
+        url = utils.quickpay_url(self.datetime_format, self.user_id, self.hash_separator, self.db_connection, self.ak_secret, self.braintree_secret, self.base_url)
         self.assertIn("act.moveon.org/donate/civ-donation-quickpay?", url)
         self.assertIn("payment_hash=3nmqoul2", url)
         self.assertIn("&akid=.18715613", url)

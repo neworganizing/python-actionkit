@@ -2,10 +2,7 @@ import base64
 import Crypto.Random
 from datetime import datetime
 import hashlib
-import psycopg2
 import re
-import settings
-
 
 def validate_akid(ak_secret, akid):
     # https://roboticdogs.actionkit.com/docs/manual/developer/hashing.html#how-to-verify-an-akid
@@ -102,25 +99,17 @@ def payment_hash(token_id, datetime_format, braintree_secret, hash_separator):
     ]
     return _append_hash(hash_separator, braintree_secret, *parts)
 
-def generate_token_id(user_id):
-    con=psycopg2.connect(
-        dbname=settings.REDSHIFT_DATABASE,
-        host=settings.REDSHIFT_HOST,
-        port= settings.REDSHIFT_PORT,
-        user= settings.REDSHIFT_USER,
-        password= settings.REDSHIFT_PASSWORD
-    )
-    cur = con.cursor()
+def generate_token_id(user_id, db_connection):
+    db_connection = db_connection
+    cur = db_connection.cursor()
     cur.execute("SELECT token_id FROM ak_moveon.bto_paymenttoken WHERE user_id = '18715613' AND status ='active';")
     data = cur.fetchone()
     cur.close()
-    con.close()
+    db_connection.close()
     return data[0]
 
-def quickpay_url(datetime_format, user_id, hash_separator):
-    ak_secret = settings.AK_SECRET
-    braintree_secret = settings.BRAINTREE_ONECLICK_SECRET
+def quickpay_url(datetime_format, user_id, hash_separator, db_connection, ak_secret, braintree_secret, base_url):
     akid = generate_akid(ak_secret, user_id)
-    token_id = generate_token_id(user_id)
+    token_id = generate_token_id(user_id, db_connection)
 
-    return 'https://act.moveon.org/donate/civ-donation-quickpay?payment_hash=' + payment_hash(token_id, datetime_format, braintree_secret, hash_separator) + '&akid=' + akid
+    return base_url + payment_hash(token_id, datetime_format, braintree_secret, hash_separator) + '&akid=' + akid
