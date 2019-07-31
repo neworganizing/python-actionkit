@@ -48,8 +48,11 @@ class AKMailingAPI(ActionKitAPI):
         res = self.client.patch(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/' % (self.base_url, mailing_id),
-            data=json.dumps(update_dict))
-        return self._http_return(res)
+            json=update_dict)
+        return {
+            'res': res,
+            'success': (200 < res.status_code < 400)
+        }
 
     def copy_mailing(self, mailing_id):
         if getattr(self.settings, 'AK_TEST', False):
@@ -58,13 +61,12 @@ class AKMailingAPI(ActionKitAPI):
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/copy/' % (self.base_url, mailing_id)
             )
+        rv = {'res': res}
         if res.status_code == 201:
-            rv = {'res': res}
             if res.headers.get('Location'):
+                rv['mailng_url'] = res.headers['Location']
                 rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
-            return rv
-        else:
-            return None
+        return rv
 
     def rebuild_mailing(self, mailing_id):
         if getattr(self.settings, 'AK_TEST', False):
@@ -73,13 +75,13 @@ class AKMailingAPI(ActionKitAPI):
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/rebuild/' % (self.base_url, mailing_id)
             )
+        rv = {'res': res}
         if res.status_code == 201:
-            rv = {'res': res}
             if res.headers.get('Location'):
                 rv['status_url'] = res.headers.get('Location')
-            return rv
         else:
-            return None
+            rv['error'] = res.text
+        return rv
 
     def get_rebuild_status(self, rebuild_status_url):
         """
@@ -111,10 +113,11 @@ class AKMailingAPI(ActionKitAPI):
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/queue/' % (self.base_url, mailing_id)
             )
+        rv = {'res': res}
         if res.status_code == 201:
-            rv = {'res': res}
             if res.headers.get('Location'):
                 rv['status_url'] = res.headers.get('Location')
+            rv['queued'] = True
         return rv
 
     def get_queue_status(self, mailing_id):
@@ -127,17 +130,15 @@ class AKMailingAPI(ActionKitAPI):
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
             )
+        rv = {'res': res}
         if res.status_code == 200:
             res_dict = res.json()
-            rv = {'res': res}
             rv['status'] = res_dict.get('status', None)
             rv['finished'] = res_dict.get('finished', None)
             rv['progress'] = res_dict.get('progress', None)
             rv['target_count'] = res_dict.get('expected_send_count', None)
             rv['started_at'] = res_dict.get('started_at', None)
-            return rv
-        else:
-            return None
+        return rv
 
     def stop_mailing(self, mailing_id):
         """
@@ -151,12 +152,13 @@ class AKMailingAPI(ActionKitAPI):
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/mailer/%s/stop/' % (self.base_url, mailing_id)
             )
+        rv = {'res': res}
         if res.status_code == 202:
-            rv = {'res': res}
             rv['status_url'] = '%s/rest/v1/mailer/%s/progress/' % (self.base_url, mailing_id)
-            return rv 
+            rv['stopped'] = True
         else:
-            return None
+            rv['stopped'] = False
+        return rv
 
     def reschedule_mailing(self, mailing_id, new_send_time):
         """
@@ -166,35 +168,37 @@ class AKMailingAPI(ActionKitAPI):
         if getattr(self.settings, 'AK_TEST', False):
             return TEST_DATA.get('queue_mailing')
         queue = self.get_queue_status(mailing_id)
-        if queue:
+        rv = {'mailing_id': mailing_id,
+              'new_send_time': new_send_time}
+
+        if not queue:
+            rv.update({'error': 'Could not get queue status for mailing {}.'.format(mailing_id),
+                       'error_code': 'mailing_status_failed'})
+        else: # if queue
             stop = None
+            # 1. If queued or sending, try to stop it
             if queue['status'] in ['queued','sending']:
                 stop = self.stop_mailing(mailing_id = mailing_id)
-                if stop:
-                    logger.info('Mailing {} stopped.'.format(mailing_id))
-                else:
-                    logger.error('Could not stop mailing {}.'.format(mailing_id))
-                    return None
-
+                rv.update(stop)
+                if not stop.get('stopped'):
+                    rv.update({'error': 'Could not stop mailing {}.'.format(mailing_id),
+                               'error_code': 'stop_mailing_failed'})
+                    return rv  # BAIL EARLY
+            # 2. Now update the mailing time
             update = self.update_mailing(mailing_id, {'scheduled_for': new_send_time})
-            if update:
-                logger.info('Mailing {} updated to send at {}.'.format(mailing_id, new_send_time))
-            else:
-                logger.error('Could not update mailing {} with new send time.'.format(mailing_id))
-                return None
-            if update and stop:
-                requeue = self.queue_mailing(mailing_id)
-                if requeue:
-                    logger.info('Mailing {} queued to send.'.format(mailing_id))
-                    return requeue
-                else:
-                    logger.error('Unable to requeue mailing {}.'.format(mailing_id))
-                    return None
-            if update and not stop:
-                return update
-        else: # if queue
-            logger.error('Could not get queue status for mailing {}.'.format(mailing_id))
-            return None
+            rv.update(update)
+            if not update.get('success'):
+                rv.update({'error': 'Could not update mailing {} with new send time.'.format(mailing_id),
+                           'error_code': 'updating_sendtime_failed'})
+                return rv  # BAIL EARLY
+
+            # 3. With mailing time updated, queue the mailing
+            requeue = self.queue_mailing(mailing_id)
+            rv.update(requeue)
+            if not rv.get('queued'):
+                rv.update({'error': 'Unable to requeue mailing {}.'.format(mailing_id),
+                           'error_code': 'requeue_failed'})
+        return rv
     
 
     TEST_DATA = {
