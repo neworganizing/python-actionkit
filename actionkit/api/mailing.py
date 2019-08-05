@@ -64,7 +64,7 @@ class AKMailingAPI(ActionKitAPI):
         rv = {'res': res}
         if res.status_code == 201:
             if res.headers.get('Location'):
-                rv['mailng_url'] = res.headers['Location']
+                rv['mailing_url'] = res.headers['Location']
                 rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
         return rv
 
