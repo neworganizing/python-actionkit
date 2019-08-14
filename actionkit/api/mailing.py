@@ -200,6 +200,30 @@ class AKMailingAPI(ActionKitAPI):
                            'error_code': 'requeue_failed'})
         return rv
     
+    def collect_targeting_reports(self, mailingtargeting_path_or_id):
+        """
+        Excludes and includes for mailings are described as a collection of targetingqueryreports
+        This gathers the info about the actual reports -- requiring several API calls, since we must traverse down
+        """
+        rv_reports = []
+        if not str(mailingtargeting_path_or_id).startswith('/rest/v1'):
+            mailingtargeting_path_or_id = '/rest/v1/mailingtargeting/%s/' % mailingtargeting_path_or_id
+        targeting_res = self.client.get('%s%s' % (self.base_url, mailingtargeting_path_or_id))
+        targeting_data = targeting_res.json()
+        for targetreport_path in targeting_data.get('targetingqueryreports', []):
+            targetreport_res = self.client.get('%s%s' % (self.base_url, targetreport_path))
+            targetreport_data = targetreport_res.json()
+            report_res = self.client.get('%s%s' % (self.base_url, targetreport_data['report']))
+            report_data = report_res.json()
+            rv_reports.append({
+                'short_name': report_data.get('short_name'),
+                'params': targetreport_data.get('targetingqueryreportparams'),
+                'sql': report_data.get('sql'),
+                'description': report_data.get('description'),
+                'report_path': targetreport_data['report'],
+                'targetingqueryreport_path': targetreport_path,
+            })
+        return rv_reports
 
     TEST_DATA = {
         'create_mailing': {
