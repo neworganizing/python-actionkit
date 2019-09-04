@@ -44,6 +44,15 @@ class AKMailingAPI(ActionKitAPI):
         return {'res': res,
                 'mailings': res.json()['objects'] if res.status_code == 200 else None}
 
+    def get_mailing_tagnames(self, mailing_obj):
+        """Fast way to get tag names from the mailing obj returned from get_mailings"""
+        tag_refs = mailing_obj.get('mailing', mailing_obj).get('tags', [])
+        tags = []
+        for t in tag_refs:
+            tdata = self.client.get('%s%s' % (self.base_url, t))
+            tags.append(tdata.json().get('name'))
+        return tags
+
     def update_mailing(self, mailing_id, update_dict):
         res = self.client.patch(
             #the '/' at the end is IMPORTANT!
