@@ -245,6 +245,19 @@ class AKResource(object):
             'PUT', self.base_url + str(id), data=json.dumps(data))
         return result.json()
 
+     def patch(self, id, data):
+         '''Updates an existing ActionKit record
+
+         Arguments:
+
+         * id -- ID/Primary Key of the record you wish to update
+         * data -- Dictionary of the data you wish to overwrite the existing record with
+
+         '''
+         result = self._call_actionkit(
+             'PATCH', self.base_url + str(id) +"/", data=json.dumps(data))
+         return result.json()
+
 def _exception_handler(result):
     ''' A handler that will return the correct exception based on the error
     thrown by ActionKit
@@ -279,3 +292,4 @@ def _exception_handler(result):
         message = 'Error Code {status}. Response content: {content}'
         message = message.format(status=result.status_code, content=response_content)
         raise ActionKitGeneralError(message)
+
