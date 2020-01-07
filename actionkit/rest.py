@@ -1,8 +1,8 @@
 import requests
 import json
 
-from urlparse import urlparse
-import urllib
+from urllib.parse import urlparse
+import urllib.request, urllib.parse, urllib.error
 
 from actionkit.errors import *
 
@@ -203,7 +203,7 @@ class AKResource(object):
 
         '''
         result = self._call_actionkit(
-            'GET', self.base_url + '?' + urllib.urlencode(kwargs, True))
+            'GET', self.base_url + '?' + urllib.parse.urlencode(kwargs, True))
         return result.json()
 
     def create(self, data):

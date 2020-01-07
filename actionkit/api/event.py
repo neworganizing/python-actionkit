@@ -10,8 +10,8 @@ try:
     encode_url = urllib.parse.urlencode
 except ImportError:
     # python2
-    import urllib
-    encode_url = urllib.urlencode
+    import urllib.request, urllib.parse, urllib.error
+    encode_url = urllib.parse.urlencode
 
 
 class AKEventAPI(base.ActionKitAPI):
@@ -27,7 +27,7 @@ class AKEventAPI(base.ActionKitAPI):
         eventfields = {}
         actionfields = {}
         dateinfo = {}
-        for f,val in fields.items():
+        for f,val in list(fields.items()):
             if f.startswith('event_starts_at'):
                 dateinfo[f] = val
             elif f.startswith('event_'):
@@ -52,7 +52,7 @@ class AKEventAPI(base.ActionKitAPI):
             fieldresults = []
             evt = self.get_event(event_id)
             cur_fields = dict([(f['name'], f) for f in evt['res'].json().get('fields', [])])
-            for name,val in actionfields.items():
+            for name,val in list(actionfields.items()):
                 if name in cur_fields:
                     if val != cur_fields[name]['value']:
                         fieldresults.append(self.set_event_field(event_id, name, val, cur_fields[name]['id']))

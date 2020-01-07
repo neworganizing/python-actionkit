@@ -6,7 +6,7 @@ import sys
 try:
     from six import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from io import StringIO
 
 from actionkit.api import base
 
@@ -115,7 +115,7 @@ class AKUserAPI(base.ActionKitAPI):
             outcsv.writerows(rows)
         else: #this is the nightmare python3 has saved us from:
             for row in rows:
-                outcsv.writerow([(s.encode("utf-8") if isinstance(s, unicode) else s)
+                outcsv.writerow([(s.encode("utf-8") if isinstance(s, str) else s)
                                  for s in row])
         return self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
                                 autocreate_user_fields=autocreate_user_fields)

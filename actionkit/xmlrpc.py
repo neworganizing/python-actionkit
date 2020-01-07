@@ -1,7 +1,7 @@
 try: #python3
-    from xmlrpc.client import ServerProxy
+    from .xmlrpc.client import ServerProxy
 except ImportError: #python2
-    from xmlrpclib import ServerProxy
+    from xmlrpc.client import ServerProxy
 
 from actionkit.errors import ActionKitGeneralError
 
