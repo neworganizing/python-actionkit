@@ -89,6 +89,22 @@ class AKUserAPI(base.ActionKitAPI):
         else:
             return None
 
+    def payment_token(self, bto_paymenttoken_id):
+        res = self.client.get(
+            '{}/rest/v1/paymenttoken/{}'.format(self.base_url, bto_paymenttoken_id))
+        if res.status_code == 200:
+            resjson = res.json()
+            user_id = re.findall(r'/rest/v1/user/(\d+)', resjson["user"])
+            return {
+                "id": resjson["id"],
+                "status": resjson["status"],
+                "token_id": resjson["token_id"],
+                "user_id": int(user_id[0]) if user_id else None,
+                "res": res
+            }
+        else:
+            return None
+
     def bulk_upload(self, import_page, csv_file, autocreate_user_fields=0):
         """
         Note: If you get a 500 error, try sending a much smaller file (say, one row),
