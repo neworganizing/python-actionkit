@@ -1836,15 +1836,15 @@ class CoreUserManager(models.Manager):
         #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
         actionalias = qs.query.join(Join('core_action', qs.query.get_initial_alias(), 'core_action', INNER,
                                    CoreUser._meta.fields_map['actions'], False))
-        actionfield_alias = qs.query.join(Join(ActionField._meta.db_table, actionalias, 'avals_val', INNER,
-                                               Action._meta.fields_map['customfields'],
+        actionfield_alias = qs.query.join(Join(CoreActionfield._meta.db_table, actionalias, 'avals_val', INNER,
+                                               CoreAction._meta.fields_map['customfields'],
                                                False))
         #group by everything except our aggregate annotation
         # this is generically problematic, because if we need to group by other things,
         #  then this will fail
         qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
 
-        qs.query.add_annotation(models.Count('actions__value'), 'actionval_count', is_summary=False)
+        qs.query.add_annotation(models.Count('actions__customfields__value'), 'actionval_count', is_summary=False)
         xtrawhere = HavingGroupCondition(['count(DISTINCT {}.value, core_user.id) >= %s'.format(actionfield_alias)], (min_count,))
         qs.query.where.add(xtrawhere, AND)
 
