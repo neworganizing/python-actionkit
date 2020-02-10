@@ -6,7 +6,7 @@ import sys
 try:
     from six import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from io import StringIO
 
 from actionkit.api import base
 
