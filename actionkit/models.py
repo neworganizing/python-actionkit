@@ -1,6 +1,67 @@
+import datetime
+import re
+
 from django.db import models
+#for all the group by/having hacking
+from django.db.models.sql.constants import INNER, LOUTER
+from django.db.models.sql.datastructures import Join
+from django.db.models.sql.where import (
+    AND, OR, ExtraWhere, NothingNode, WhereNode,
+)
+from django.conf import settings
+from django import forms
+from django.utils import timezone
 
 from actionkit import ActionKitGeneralError
+from actionkit.api.user import AKUserAPI
+
+class HavingGroupCondition(ExtraWhere):
+    contains_aggregate = True
+
+    def get_group_by_cols(self):
+        #django looks for this method with aggregates.  See models.Count code
+        return []
+
+
+class JoinField:
+    """We need this because of the extra restriction on the join
+    for add_userfield_to_queryset() and add_eventfield_to_queryset()
+    """
+    def __init__(self, basis, customfield, cols=None, customval=None):
+        self.basis = basis
+        self.customfield = customfield
+        self.customval = customval # if this is set, then it will be part of the join
+        #in the form of (('<main table join field>', '<joined table join field>'), )
+        self.cols = cols
+
+    def get_joining_columns(self):
+        if self.cols:
+            return self.cols
+        else:
+            return self.basis.get_joining_columns()
+
+    def get_extra_restriction(self, where_class, alias, related_alias):
+        #alias is core_userfield and related_alias is core_user
+        wheres = ["{}.name = %s".format(alias)]
+        params = [self.customfield,]
+        if self.customval:
+            wheres.append("{}.value = %s".format(alias))
+            params.append(self.customval)
+        return ExtraWhere(wheres, params)
+
+class ZipJoin:
+    @classmethod
+    def add_to_queryset(cls, qs):
+        return qs.query.join(
+            Join('zip_proximity', qs.query.get_initial_alias(), 'zip_proximity', INNER,
+                 cls(), True))
+
+
+    def get_joining_columns(self):
+        return (('zip', 'zip'),)
+
+    def get_extra_restriction(self, where_class, alias, related_alias):
+        return None
 
 class _akit_model(models.Model):
 
@@ -10,6 +71,13 @@ class _akit_model(models.Model):
             raise ActionKitGeneralError("Error Saving: You cannot save using the Django ORM")
         elif save_mode == 'api' and hasattr(self, 'api_save'):
             self.api_save(**kwargs)
+            updated = bool(self.id) #assuming just updating for now
+            models.signals.post_save.send(sender=self.__class__,
+                                          instance=self,
+                                          created=(not updated),
+                                          update_fields=None,
+                                          raw=True)
+
 
     class Meta:
         abstract = True
@@ -44,16 +112,16 @@ class CorePage(_akit_model):
 class CoreAction(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', related_name='actions', on_delete=models.CASCADE)
-    mailing = models.ForeignKey('CoreMailing', related_name='actions', null=True, blank=True, on_delete=models.CASCADE)
-    page = models.ForeignKey('CorePage', related_name='actions', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', related_name='actions', on_delete=models.DO_NOTHING)
+    mailing = models.ForeignKey('CoreMailing', related_name='actions', null=True, blank=True, on_delete=models.DO_NOTHING)
+    page = models.ForeignKey('CorePage', related_name='actions', on_delete=models.DO_NOTHING)
     link = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=765)
     opq_id = models.CharField(max_length=765)
     created_user = models.IntegerField()
     subscribed_user = models.IntegerField()
-    referring_user = models.ForeignKey('CoreUser', related_name='referred_actions', null=True, blank=True, on_delete=models.CASCADE)
-    referring_mailing = models.ForeignKey('CoreMailing', related_name='referred_actions', null=True, blank=True, on_delete=models.CASCADE)
+    referring_user = models.ForeignKey('CoreUser', related_name='referred_actions', null=True, blank=True, on_delete=models.DO_NOTHING)
+    referring_mailing = models.ForeignKey('CoreMailing', related_name='referred_actions', null=True, blank=True, on_delete=models.DO_NOTHING)
     taf_emails_sent = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=765)
     ip_address = models.GenericIPAddressField()
@@ -71,8 +139,8 @@ class ReportsReport(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
-    short_name = models.CharField(max_length=765, unique=True, blank=True)
+    name = models.TextField(max_length=765, unique=True)
+    short_name = models.TextField(max_length=765, unique=True, blank=True)
     description = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
     run_every = models.CharField(max_length=765)
@@ -82,10 +150,10 @@ class ReportsReport(_akit_model):
         db_table = u'reports_report'
 
 class CoreDonationpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     minimum_amount = models.DecimalField(max_digits=12, decimal_places=2)
     payment_account = models.CharField(max_length=765)
-    hpc_rule = models.ForeignKey('CoreDonationHpcRule', null=True, blank=True, on_delete=models.CASCADE)
+    hpc_rule = models.ForeignKey('CoreDonationHpcRule', null=True, blank=True, on_delete=models.DO_NOTHING)
     allow_international = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_donationpage'
@@ -94,24 +162,24 @@ class CoreMailing(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    fromline = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.CASCADE)
+    fromline = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.DO_NOTHING)
     custom_fromline = models.CharField(max_length=765)
     reply_to = models.CharField(max_length=765, blank=True)
     notes = models.CharField(max_length=765, blank=True)
     html = models.TextField(blank=True)
     text = models.TextField(blank=True)
-    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.CASCADE)
-    emailwrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.CASCADE)
-    landing_page = models.ForeignKey('CorePage', null=True, blank=True, on_delete=models.CASCADE)
+    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.DO_NOTHING)
+    emailwrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.DO_NOTHING)
+    landing_page = models.ForeignKey('CorePage', null=True, blank=True, on_delete=models.DO_NOTHING)
     target_group_from_landing_page = models.IntegerField()
-    winning_subject = models.ForeignKey('CoreMailingsubject', null=True, blank=True, on_delete=models.CASCADE)
+    winning_subject = models.ForeignKey('CoreMailingsubject', null=True, blank=True, on_delete=models.DO_NOTHING)
     requested_proofs = models.IntegerField(null=True, blank=True)
-    submitter = models.ForeignKey('AuthUser', related_name='mailings_submitted', null=True, blank=True, on_delete=models.CASCADE)
+    submitter = models.ForeignKey('AuthUser', related_name='mailings_submitted', null=True, blank=True, on_delete=models.DO_NOTHING)
     scheduled_for = models.DateTimeField(null=True, blank=True)
-    scheduled_by = models.ForeignKey('AuthUser', null=True, blank=True, on_delete=models.CASCADE)
+    scheduled_by = models.ForeignKey('AuthUser', null=True, blank=True, on_delete=models.DO_NOTHING)
     queue_task_id = models.CharField(max_length=765, blank=True)
     queued_at = models.DateTimeField(null=True, blank=True)
-    queued_by = models.ForeignKey('AuthUser', related_name='mailings_queued', null=True, blank=True, on_delete=models.CASCADE)
+    queued_by = models.ForeignKey('AuthUser', related_name='mailings_queued', null=True, blank=True, on_delete=models.DO_NOTHING)
     expected_send_count = models.IntegerField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -124,8 +192,8 @@ class CoreMailing(_akit_model):
     rate = models.FloatField(null=True, blank=True)
     progress = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=765, blank=True)
-    includes = models.ForeignKey('CoreMailingtargeting', related_name='mailings_included', null=True, blank=True, on_delete=models.CASCADE)
-    excludes = models.ForeignKey('CoreMailingtargeting', related_name='mailings_excluded', null=True, blank=True, on_delete=models.CASCADE)
+    includes = models.ForeignKey('CoreMailingtargeting', related_name='mailings_included', null=True, blank=True, on_delete=models.DO_NOTHING)
+    excludes = models.ForeignKey('CoreMailingtargeting', related_name='mailings_excluded', null=True, blank=True, on_delete=models.DO_NOTHING)
     limit = models.IntegerField(null=True, blank=True)
     sort_by = models.CharField(max_length=96, blank=True)
     pid = models.IntegerField(null=True, blank=True)
@@ -158,7 +226,7 @@ class CoreTargetgroup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     type = models.CharField(max_length=765)
     readonly = models.IntegerField()
     class Meta(_akit_model.Meta):
@@ -170,21 +238,21 @@ class AuthGroup(_akit_model):
         db_table = u'auth_group'
 
 class AuthGroupPermissions(_akit_model):
-    group = models.OneToOneField('AuthGroup', on_delete=models.CASCADE)
-    permission = models.ForeignKey('AuthPermission', on_delete=models.CASCADE)
+    group = models.OneToOneField('AuthGroup', on_delete=models.DO_NOTHING)
+    permission = models.ForeignKey('AuthPermission', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'auth_group_permissions'
 
 class AuthMessage(_akit_model):
-    user = models.ForeignKey('AuthUser', on_delete=models.CASCADE)
+    user = models.ForeignKey('AuthUser', on_delete=models.DO_NOTHING)
     message = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'auth_message'
 
 class AuthPermission(_akit_model):
     name = models.CharField(max_length=150)
-    content_type = models.ForeignKey('DjangoContentType', on_delete=models.CASCADE)
-    codename = models.CharField(max_length=300, unique=True)
+    content_type = models.ForeignKey('DjangoContentType', on_delete=models.DO_NOTHING)
+    codename = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'auth_permission'
 
@@ -203,14 +271,14 @@ class AuthUser(_akit_model):
         db_table = u'auth_user'
 
 class AuthUserGroups(_akit_model):
-    user = models.OneToOneField('AuthUser', on_delete=models.CASCADE)
-    group = models.ForeignKey('AuthGroup', on_delete=models.CASCADE)
+    user = models.OneToOneField('AuthUser', on_delete=models.DO_NOTHING)
+    group = models.ForeignKey('AuthGroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'auth_user_groups'
 
 class AuthUserUserPermissions(_akit_model):
-    user = models.OneToOneField('AuthUser', on_delete=models.CASCADE)
-    permission = models.ForeignKey('AuthPermission', on_delete=models.CASCADE)
+    user = models.OneToOneField('AuthUser', on_delete=models.DO_NOTHING)
+    permission = models.ForeignKey('AuthPermission', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'auth_user_user_permissions'
 
@@ -227,14 +295,14 @@ class AxesAccessattempt(_akit_model):
         db_table = u'axes_accessattempt'
 
 class Cache(_akit_model):
-    cache_key = models.CharField(max_length=765, primary_key=True)
+    cache_key = models.TextField(max_length=765, primary_key=True)
     value = models.TextField()
     expires = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'cache'
 
 class CeleryTaskmeta(_akit_model):
-    task_id = models.CharField(max_length=765, unique=True)
+    task_id = models.TextField(max_length=765, unique=True)
     status = models.CharField(max_length=150)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
@@ -243,7 +311,7 @@ class CeleryTaskmeta(_akit_model):
         db_table = u'celery_taskmeta'
 
 class CeleryTasksetmeta(_akit_model):
-    taskset_id = models.CharField(max_length=765, unique=True)
+    taskset_id = models.TextField(max_length=765, unique=True)
     result = models.TextField(blank=True)
     date_done = models.DateTimeField()
     class Meta(_akit_model.Meta):
@@ -253,8 +321,8 @@ class CmsCallForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -264,7 +332,7 @@ class CmsCallForm(_akit_model):
         db_table = u'cms_call_form'
 
 class CmsCannedletter(_akit_model):
-    lte_form = models.ForeignKey('CmsLteForm', on_delete=models.CASCADE)
+    lte_form = models.ForeignKey('CmsLteForm', on_delete=models.DO_NOTHING)
     subject = models.CharField(max_length=240)
     letter_text = models.TextField()
     class Meta(_akit_model.Meta):
@@ -274,8 +342,8 @@ class CmsDonationForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ask_text = models.TextField()
@@ -290,7 +358,7 @@ class CmsDonationamount(_akit_model):
     updated_at = models.DateTimeField()
     is_default = models.IntegerField()
     amount = models.CharField(max_length=30)
-    donation_form = models.ForeignKey('CmsDonationForm', on_delete=models.CASCADE)
+    donation_form = models.ForeignKey('CmsDonationForm', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'cms_donationamount'
 
@@ -298,8 +366,8 @@ class CmsEventCreateForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ground_rules = models.TextField()
@@ -315,8 +383,8 @@ class CmsEventSignupForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     ground_rules = models.TextField()
@@ -328,12 +396,16 @@ class CmsEventSignupForm(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'cms_event_signup_form'
 
+    def fields(self):
+        """Gets the custom fields for the event form"""
+        return self._fields_unfiltered.filter(form_type__model='eventsignupform')
+
 class CmsLetterForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     statement_leadin = models.TextField()
@@ -346,8 +418,8 @@ class CmsLteForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -360,8 +432,8 @@ class CmsPetitionForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     statement_leadin = models.TextField()
@@ -371,7 +443,7 @@ class CmsPetitionForm(_akit_model):
         db_table = u'cms_petition_form'
 
 class CmsRecurringdonationForm(CmsDonationForm):
-    donationform = models.OneToOneField(CmsDonationForm, parent_link=True, db_column='donationform_ptr_id', on_delete=models.CASCADE)
+    donationform = models.OneToOneField(CmsDonationForm, parent_link=True, db_column='donationform_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'cms_recurringdonation_form'
 
@@ -379,8 +451,8 @@ class CmsRecurringdonationcancelForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     please_stay_text = models.TextField()
@@ -391,8 +463,8 @@ class CmsRecurringdonationupdateForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     update_card_text = models.TextField()
@@ -403,8 +475,8 @@ class CmsSignupForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -415,8 +487,8 @@ class CmsSurveyForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -428,16 +500,51 @@ class CmsSurveyQuestion(_akit_model):
     updated_at = models.DateTimeField()
     question_label = models.TextField()
     question_html = models.TextField()
-    survey_form = models.ForeignKey('CmsSurveyForm', on_delete=models.CASCADE)
+    survey_form = models.ForeignKey('CmsSurveyForm', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'cms_survey_question'
+
+class CmsUserFormField(_akit_model):
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    form_type = models.ForeignKey('DjangoContentType', on_delete=models.DO_NOTHING)
+    form_id = models.PositiveIntegerField()
+    type = models.CharField(max_length=8)
+    label = models.TextField()
+    field_name = models.CharField(max_length=96)
+    input = models.CharField(max_length=16)
+    alternatives = models.TextField()
+    html = models.TextField()
+    status = models.CharField(max_length=8)
+    ordering = models.IntegerField()
+
+    class Meta(_akit_model.Meta):
+        db_table = u'cms_user_form_field'
+
+    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+                                           from_fields=['form_id'], to_fields=['id'],
+                                           related_name='_fields_unfiltered')
+
+    def formfield(self, widget_adapter=None):
+        if self.input == 'checkbox':
+            alts = [a.split('=',1) for a in self.alternatives.splitlines()]
+            for a in alts:
+                if len(a) == 1:
+                    a.append(a[0]) #copy value to name
+                else:
+                    a.reverse()
+            w = forms.CheckboxSelectMultiple
+            if callable(widget_adapter):
+                w = widget_adapter(self, w)
+            return forms.MultipleChoiceField(choices=alts, widget=w, label=self.label)
+
 
 class CmsTemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     filename = models.CharField(max_length=765)
     code = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
     code_hash = models.CharField(max_length=192)
     class Meta(_akit_model.Meta):
         db_table = u'cms_template'
@@ -453,7 +560,7 @@ class CmsTemplatecode(_akit_model):
 class CmsTemplatehistory(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
     filename = models.CharField(max_length=765)
     code_hash = models.CharField(max_length=192)
     user_name = models.CharField(max_length=192, blank=True)
@@ -465,10 +572,10 @@ class CmsTemplateset(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     editable = models.IntegerField()
-    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.CASCADE)
+    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.DO_NOTHING)
     is_default = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'cms_templateset'
@@ -477,8 +584,8 @@ class CmsUnsubscribeForm(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     thank_you_text = models.TextField()
-    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.CASCADE)
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    templateset = models.ForeignKey('CmsTemplateset', on_delete=models.DO_NOTHING)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     client_hosted = models.IntegerField()
     client_url = models.CharField(max_length=765)
     introduction_text = models.TextField()
@@ -492,14 +599,14 @@ class CmsUploadedfile(_akit_model):
     bucket = models.CharField(max_length=765)
     directory = models.CharField(max_length=765)
     filename = models.CharField(max_length=765)
-    url = models.CharField(max_length=765, unique=True)
+    url = models.TextField(max_length=765, unique=True)
     etag = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'cms_uploadedfile'
 
 
 class CoreActionfield(_akit_model):
-    parent = models.ForeignKey('CoreAction', related_name='customfields', on_delete=models.CASCADE)
+    parent = models.ForeignKey('CoreAction', related_name='customfields', on_delete=models.DO_NOTHING)
     name = models.CharField(max_length=765)
     value = models.TextField()
     class Meta(_akit_model.Meta):
@@ -511,17 +618,17 @@ class CoreActionnotification(_akit_model):
     hidden = models.IntegerField()
     name = models.CharField(max_length=765)
     to = models.CharField(max_length=765, blank=True)
-    from_line = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.CASCADE)
+    from_line = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.DO_NOTHING)
     custom_from = models.CharField(max_length=765)
     subject = models.CharField(max_length=765)
-    wrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.CASCADE)
+    wrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.DO_NOTHING)
     body = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_actionnotification'
 
 class CoreActionnotificationToStaff(_akit_model):
-    actionnotification = models.OneToOneField('CoreActionnotification', on_delete=models.CASCADE)
-    user = models.ForeignKey('AuthUser', on_delete=models.CASCADE)
+    actionnotification = models.OneToOneField('CoreActionnotification', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('AuthUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_actionnotification_to_staff'
 
@@ -534,8 +641,8 @@ class CoreActivityleveltargetingoption(_akit_model):
 class CoreAdminprefs(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.OneToOneField('AuthUser', on_delete=models.CASCADE)
-    content_type = models.ForeignKey('DjangoContentType', on_delete=models.CASCADE)
+    user = models.OneToOneField('AuthUser', on_delete=models.DO_NOTHING)
+    content_type = models.ForeignKey('DjangoContentType', on_delete=models.DO_NOTHING)
     ordering = models.CharField(max_length=765, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_adminprefs'
@@ -544,7 +651,7 @@ class CoreAllowedpagefield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_allowedpagefield'
@@ -553,7 +660,7 @@ class CoreAlloweduserfield(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, primary_key=True)
+    name = models.TextField(max_length=765, primary_key=True)
     always_show = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_alloweduserfield'
@@ -578,7 +685,7 @@ class CoreBackgroundtask(_akit_model):
         db_table = u'core_backgroundtask'
 
 class CoreBackgroundtaskdetail(_akit_model):
-    task = models.ForeignKey('CoreBackgroundtask', on_delete=models.CASCADE)
+    task = models.ForeignKey('CoreBackgroundtask', on_delete=models.DO_NOTHING)
     row = models.IntegerField()
     details = models.TextField()
     class Meta(_akit_model.Meta):
@@ -609,38 +716,38 @@ class CoreBuiltintranslation(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     iso_code = models.CharField(max_length=30)
     translations = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_builtintranslation'
 
 class CoreCallaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction'
 
 class CoreCallactionChecked(_akit_model):
-    callaction = models.OneToOneField('CoreCallaction', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    callaction = models.OneToOneField('CoreCallaction', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction_checked'
 
 class CoreCallactionTargeted(_akit_model):
-    callaction = models.OneToOneField('CoreCallaction', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    callaction = models.OneToOneField('CoreCallaction', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_callaction_targeted'
 
 class CoreCallpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     constituents_only_url = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_callpage'
 
 class CoreCallpageTargetGroups(_akit_model):
-    callpage = models.OneToOneField('CoreCallpage', on_delete=models.CASCADE)
-    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.CASCADE)
+    callpage = models.OneToOneField('CoreCallpage', on_delete=models.DO_NOTHING)
+    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_callpage_target_groups'
 
@@ -648,7 +755,7 @@ class CoreCandidate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     portrait_url = models.CharField(max_length=765)
     description = models.TextField()
     status = models.CharField(max_length=765)
@@ -656,8 +763,8 @@ class CoreCandidate(_akit_model):
         db_table = u'core_candidate'
 
 class CoreCandidateTags(_akit_model):
-    candidate = models.OneToOneField('CoreCandidate', on_delete=models.CASCADE)
-    tag = models.ForeignKey('CoreTag', on_delete=models.CASCADE)
+    candidate = models.OneToOneField('CoreCandidate', on_delete=models.DO_NOTHING)
+    tag = models.ForeignKey('CoreTag', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_candidate_tags'
 
@@ -678,8 +785,8 @@ class CoreClick(_akit_model):
         db_table = u'core_click'
 
 class CoreClickurl(_akit_model):
-    url = models.CharField(max_length=765, unique=True)
-    page = models.ForeignKey('CorePage', null=True, blank=True, on_delete=models.CASCADE)
+    url = models.TextField(max_length=765, unique=True)
+    page = models.ForeignKey('CorePage', null=True, blank=True, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'core_clickurl'
@@ -687,12 +794,12 @@ class CoreClickurl(_akit_model):
 class CoreClientdomain(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    domain = models.CharField(max_length=765, unique=True)
+    domain = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_clientdomain'
 
 class CoreCongresstargetgroup(CoreTargetgroup):
-    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id', on_delete=models.CASCADE)
+    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id', on_delete=models.DO_NOTHING)
     include_republicans = models.IntegerField()
     include_democrats = models.IntegerField()
     include_independents = models.IntegerField()
@@ -701,14 +808,14 @@ class CoreCongresstargetgroup(CoreTargetgroup):
         db_table = u'core_congresstargetgroup'
 
 class CoreCongresstargetgroupExcludes(_akit_model):
-    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_congresstargetgroup_excludes'
 
 class CoreCongresstargetgroupTargets(_akit_model):
-    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    congresstargetgroup = models.OneToOneField('CoreCongresstargetgroup', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_congresstargetgroup_targets'
 
@@ -716,7 +823,7 @@ class CoreDonationHpcRule(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     which_amount = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule'
@@ -724,58 +831,58 @@ class CoreDonationHpcRule(_akit_model):
 class CoreDonationHpcRuleCondition(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    rule = models.ForeignKey('CoreDonationHpcRule', on_delete=models.CASCADE)
+    rule = models.ForeignKey('CoreDonationHpcRule', on_delete=models.DO_NOTHING)
     threshold = models.CharField(max_length=30)
     ask = models.CharField(max_length=30)
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule_condition'
 
 class CoreDonationHpcRuleExcludeTags(_akit_model):
-    donationhpcrule = models.OneToOneField('CoreDonationHpcRule', on_delete=models.CASCADE)
-    tag = models.ForeignKey('CoreTag', on_delete=models.CASCADE)
+    donationhpcrule = models.OneToOneField('CoreDonationHpcRule', on_delete=models.DO_NOTHING)
+    tag = models.ForeignKey('CoreTag', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donation_hpc_rule_exclude_tags'
 
 class CoreDonationaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationaction'
 
 class CoreDonationcancellationaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationcancellationaction'
 
 class CoreDonationcancellationpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationcancellationpage'
 
 class CoreDonationpageCandidates(_akit_model):
-    donationpage = models.OneToOneField('CoreDonationpage', on_delete=models.CASCADE)
-    candidate = models.ForeignKey('CoreCandidate', on_delete=models.CASCADE)
+    donationpage = models.OneToOneField('CoreDonationpage', on_delete=models.DO_NOTHING)
+    candidate = models.ForeignKey('CoreCandidate', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationpage_candidates'
 
 class CoreDonationpageProducts(_akit_model):
-    donationpage = models.OneToOneField('CoreDonationpage', on_delete=models.CASCADE)
-    product = models.ForeignKey('CoreProduct', on_delete=models.CASCADE)
+    donationpage = models.OneToOneField('CoreDonationpage', on_delete=models.DO_NOTHING)
+    product = models.ForeignKey('CoreProduct', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationpage_products'
 
 class CoreDonationupdateaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationupdateaction'
 
 class CoreDonationupdatepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_donationupdatepage'
 
 class CoreEmailtemplate(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
-    wrapper = models.ForeignKey('CoreEmailwrapper', on_delete=models.CASCADE)
+    name = models.TextField(max_length=765, unique=True)
+    wrapper = models.ForeignKey('CoreEmailwrapper', on_delete=models.DO_NOTHING)
     from_line = models.CharField(max_length=765)
     subject = models.CharField(max_length=765)
     template = models.TextField()
@@ -786,43 +893,48 @@ class CoreEmailwrapper(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     text_template = models.TextField()
     unsubscribe_text = models.TextField()
     unsubscribe_html = models.TextField()
     is_default = models.IntegerField(null=True, blank=True)
-    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.CASCADE)
+    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_emailwrapper'
 
 class CoreEventcreateaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
-    event = models.ForeignKey('EventsEvent', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
+    event = models.ForeignKey('EventsEvent', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_eventcreateaction'
 
 class CoreEventcreatepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
-    campaign = models.ForeignKey('EventsCampaign', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
+    campaign = models.ForeignKey('EventsCampaign', on_delete=models.DO_NOTHING)
     campaign_title = models.CharField(max_length=765, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_eventcreatepage'
 
 class CoreEventsignupaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
-    signup = models.ForeignKey('EventsEventsignup', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
+    signup = models.ForeignKey('EventsEventsignup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignupaction'
 
 class CoreEventsignuppage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
-    campaign = models.ForeignKey('EventsCampaign', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
+    campaign = models.ForeignKey('EventsCampaign', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignuppage'
 
+    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+                                from_fields=['page_id'], to_fields=['page_id'],
+                                related_name='eventsignuppage')
+
+
 class CoreFormfield(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_formfield'
 
@@ -830,12 +942,12 @@ class CoreFromline(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    from_line = models.CharField(max_length=765, unique=True)
+    from_line = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_fromline'
 
 class CoreHostingplatform(_akit_model):
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     after_basics_redirect_url = models.CharField(max_length=765)
     after_basics_redirect_name = models.CharField(max_length=765)
     end_redirect_url = models.CharField(max_length=765)
@@ -845,12 +957,12 @@ class CoreHostingplatform(_akit_model):
         db_table = u'core_hostingplatform'
 
 class CoreImportaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_importaction'
 
 class CoreImportpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     subscribe = models.IntegerField()
     default_source = models.CharField(max_length=765, blank=True)
     unsubscribe_all = models.IntegerField(null=True, blank=True)
@@ -861,7 +973,7 @@ class CoreLanguage(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     translations = models.TextField()
     iso_code = models.CharField(max_length=30, blank=True)
     inherit_from_id = models.IntegerField(null=True, blank=True)
@@ -870,18 +982,18 @@ class CoreLanguage(_akit_model):
         db_table = u'core_language'
 
 class CoreLetteraction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_letteraction'
 
 class CoreLetteractionTargeted(_akit_model):
-    letteraction = models.OneToOneField('CoreLetteraction', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    letteraction = models.OneToOneField('CoreLetteraction', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_letteraction_targeted'
 
 class CoreLetterpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     send_immediate_fax = models.IntegerField()
     send_immediate_email = models.IntegerField()
     immediate_email_subject = models.CharField(max_length=765)
@@ -890,8 +1002,8 @@ class CoreLetterpage(CorePage):
         db_table = u'core_letterpage'
 
 class CoreLetterpageTargetGroups(_akit_model):
-    letterpage = models.OneToOneField('CoreLetterpage', on_delete=models.CASCADE)
-    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.CASCADE)
+    letterpage = models.OneToOneField('CoreLetterpage', on_delete=models.DO_NOTHING)
+    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_letterpage_target_groups'
 
@@ -899,7 +1011,7 @@ class CoreList(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     is_default = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_list'
@@ -907,7 +1019,7 @@ class CoreList(_akit_model):
 class CoreLocation(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.OneToOneField('CoreUser', primary_key=True, related_name='location', on_delete=models.CASCADE)
+    user = models.OneToOneField('CoreUser', primary_key=True, related_name='location', on_delete=models.DO_NOTHING)
     us_district = models.CharField(max_length=15, verbose_name="US district")
     us_state_senate = models.CharField(max_length=18)
     us_state_district = models.CharField(max_length=18)
@@ -921,16 +1033,32 @@ class CoreLocation(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'core_location'
 
+
+class CoreUsergeofield(_akit_model):
+    """
+    user_id,id,value,name,updated_at, created_at
+    """
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    user = models.ForeignKey('CoreUser', related_name='geofields', on_delete=models.DO_NOTHING)
+    name = models.CharField(max_length=255)
+    value = models.CharField(max_length=255)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'core_usergeofield'
+
+
+
 class CoreLteaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     subject = models.CharField(max_length=240)
     letter_text = models.TextField()
-    target = models.ForeignKey('CoreMediatarget', null=True, blank=True, on_delete=models.CASCADE)
+    target = models.ForeignKey('CoreMediatarget', null=True, blank=True, on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_lteaction'
 
 class CoreLtepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     national_newspapers = models.IntegerField()
     regional_newspapers = models.IntegerField()
     local_newspapers = models.IntegerField()
@@ -939,21 +1067,21 @@ class CoreLtepage(CorePage):
         db_table = u'core_ltepage'
 
 class CoreMailingReviewers(_akit_model):
-    mailing = models.OneToOneField('CoreMailing', on_delete=models.CASCADE)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    mailing = models.OneToOneField('CoreMailing', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailing_reviewers'
 
 class CoreMailingTags(_akit_model):
-    mailing = models.OneToOneField('CoreMailing', on_delete=models.CASCADE)
-    tag = models.ForeignKey('CoreTag', on_delete=models.CASCADE)
+    mailing = models.OneToOneField('CoreMailing', on_delete=models.DO_NOTHING)
+    tag = models.ForeignKey('CoreTag', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailing_tags'
 
 class CoreMailingerror(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    mailing = models.ForeignKey('CoreMailing', on_delete=models.CASCADE)
+    mailing = models.ForeignKey('CoreMailing', on_delete=models.DO_NOTHING)
     queue_task_id = models.CharField(max_length=765)
     traceback = models.TextField()
     class Meta(_akit_model.Meta):
@@ -977,69 +1105,74 @@ class CoreMailingsubject(_akit_model):
 class CoreMailingtargeting(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    states = models.TextField(blank=True)
+    states = models.TextField(blank=True, null=True)
+    regions = models.TextField(blank=True, null=True)
     cds = models.TextField(blank=True)
-    state_senate_districts = models.TextField(blank=True)
-    state_house_districts = models.TextField(blank=True)
-    zips = models.TextField(blank=True)
-    zip_radius = models.IntegerField(null=True, blank=True)
-    counties = models.TextField(blank=True)
-    has_donated = models.IntegerField()
-    is_monthly_donor = models.IntegerField()
-    activity_level = models.ForeignKey('CoreActivityleveltargetingoption', null=True, blank=True, on_delete=models.CASCADE)
+    state_senate_districts = models.TextField(blank=True, null=True)
+    state_house_districts = models.TextField(blank=True, null=True)
+    zips = models.TextField(blank=True, null=True)
+    zip_radius = models.IntegerField(blank=True, null=True)
+    counties = models.TextField(blank=True, null=True)
+    countries = models.TextField(blank=True, null=True)
+    has_donated = models.BooleanField()
+    is_monthly_donor = models.BooleanField()
+    activity_level = models.ForeignKey('CoreActivityleveltargetingoption', null=True, blank=True, on_delete=models.DO_NOTHING)
     raw_sql = models.TextField(blank=True)
-    is_delivery = models.IntegerField()
-    delivery_job = models.ForeignKey('CorePetitiondeliveryjob', null=True, blank=True, on_delete=models.CASCADE)
+    is_delivery = models.BooleanField()
+    delivery_job = models.ForeignKey('CorePetitiondeliveryjob', null=True, blank=True, on_delete=models.DO_NOTHING)
     campaign_radius = models.IntegerField(null=True, blank=True)
-    countries = models.TextField(blank=True)
+    campaign_samestate_only = models.BooleanField()
+    mirror_mailing_excludes = models.BooleanField()
+    campaign_same_district_only = models.BooleanField(default=False)
+
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting'
 
 class CoreMailingtargetingActions(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    page = models.ForeignKey('CorePage', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    page = models.ForeignKey('CorePage', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_actions'
 
 class CoreMailingtargetingCampaigns(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    campaign = models.ForeignKey('EventsCampaign', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    campaign = models.ForeignKey('EventsCampaign', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_campaigns'
 
 class CoreMailingtargetingLanguages(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    language = models.ForeignKey('CoreLanguage', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    language = models.ForeignKey('CoreLanguage', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_languages'
 
 class CoreMailingtargetingLists(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    list = models.ForeignKey('CoreList', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    list = models.ForeignKey('CoreList', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_lists'
 
 class CoreMailingtargetingMailings(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    mailing = models.ForeignKey('CoreMailing', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    mailing = models.ForeignKey('CoreMailing', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_mailings'
 
 class CoreMailingtargetingTargetGroups(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    congresstargetgroup = models.ForeignKey('CoreCongresstargetgroup', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    congresstargetgroup = models.ForeignKey('CoreCongresstargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_target_groups'
 
 class CoreMailingtargetingUsers(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_users'
 
 class CoreMailingtargetingWasMonthlyDonor(_akit_model):
-    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.CASCADE)
-    recurringdonortargetingoption = models.ForeignKey('CoreRecurringdonortargetingoption', on_delete=models.CASCADE)
+    mailingtargeting = models.OneToOneField('CoreMailingtargeting', on_delete=models.DO_NOTHING)
+    recurringdonortargetingoption = models.ForeignKey('CoreRecurringdonortargetingoption', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_mailingtargeting_was_monthly_donor'
 
@@ -1077,7 +1210,7 @@ class CoreMediatarget(_akit_model):
 class CoreMessage(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     message = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_message'
@@ -1086,7 +1219,7 @@ class CoreMultilingualcampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_multilingualcampaign'
 
@@ -1105,11 +1238,11 @@ class CoreOpen(_akit_model):
 class CoreOrder(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    action = models.ForeignKey('CoreAction', on_delete=models.CASCADE)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
-    user_detail = models.ForeignKey('CoreOrderUserDetail', on_delete=models.CASCADE)
+    action = models.ForeignKey('CoreAction', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
+    user_detail = models.ForeignKey('CoreOrderUserDetail', on_delete=models.DO_NOTHING)
     card_num_last_four = models.CharField(max_length=12)
-    shipping_address = models.ForeignKey('CoreOrderShippingAddress', null=True, blank=True, on_delete=models.CASCADE)
+    shipping_address = models.ForeignKey('CoreOrderShippingAddress', null=True, blank=True, on_delete=models.DO_NOTHING)
     total = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=765)
     import_id = models.CharField(max_length=96, blank=True)
@@ -1119,9 +1252,9 @@ class CoreOrder(_akit_model):
 class CoreOrderDetail(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    order = models.ForeignKey('CoreOrder', on_delete=models.CASCADE)
-    product = models.ForeignKey('CoreProduct', null=True, blank=True, on_delete=models.CASCADE)
-    candidate = models.ForeignKey('CoreCandidate', null=True, blank=True, on_delete=models.CASCADE)
+    order = models.ForeignKey('CoreOrder', on_delete=models.DO_NOTHING)
+    product = models.ForeignKey('CoreProduct', null=True, blank=True, on_delete=models.DO_NOTHING)
+    candidate = models.ForeignKey('CoreCandidate', null=True, blank=True, on_delete=models.DO_NOTHING)
     quantity = models.IntegerField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     class Meta(_akit_model.Meta):
@@ -1167,13 +1300,13 @@ class CoreOrderUserDetail(_akit_model):
 class CoreOrderrecurring(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    order = models.ForeignKey('CoreOrder', on_delete=models.CASCADE)
-    action = models.ForeignKey('CoreAction', on_delete=models.CASCADE)
+    order = models.ForeignKey('CoreOrder', on_delete=models.DO_NOTHING)
+    action = models.ForeignKey('CoreAction', on_delete=models.DO_NOTHING)
     exp_date = models.CharField(max_length=18)
     card_num = models.CharField(max_length=12)
     recurring_id = models.CharField(max_length=765, blank=True)
     account = models.CharField(max_length=765, blank=True)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     start = models.DateField()
     occurrences = models.IntegerField(null=True, blank=True)
     period = models.CharField(max_length=765)
@@ -1183,30 +1316,30 @@ class CoreOrderrecurring(_akit_model):
         db_table = u'core_orderrecurring'
 
 class CorePageRequiredFields(_akit_model):
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
-    formfield = models.ForeignKey('CoreFormfield', on_delete=models.CASCADE)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
+    formfield = models.ForeignKey('CoreFormfield', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_page_required_fields'
 
 class CorePageTags(_akit_model):
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
-    tag = models.ForeignKey('CoreTag', on_delete=models.CASCADE)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
+    tag = models.ForeignKey('CoreTag', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_page_tags'
 
 class CorePagefield(_akit_model):
-    parent = models.ForeignKey('CorePage', related_name='customfields', on_delete=models.CASCADE)
-    name = models.ForeignKey('CoreAllowedpagefield', db_column='name', on_delete=models.CASCADE)
+    parent = models.ForeignKey('CorePage', related_name='customfields', on_delete=models.DO_NOTHING)
+    name = models.ForeignKey('CoreAllowedpagefield', db_column='name', on_delete=models.DO_NOTHING)
     value = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_pagefield'
 
 class CorePagefollowup(_akit_model):
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     send_email = models.IntegerField()
     url = models.CharField(max_length=765)
-    email_wrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.CASCADE)
-    email_from_line = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.CASCADE)
+    email_wrapper = models.ForeignKey('CoreEmailwrapper', null=True, blank=True, on_delete=models.DO_NOTHING)
+    email_from_line = models.ForeignKey('CoreFromline', null=True, blank=True, on_delete=models.DO_NOTHING)
     email_custom_from = models.CharField(max_length=765)
     email_subject = models.CharField(max_length=765)
     email_body = models.TextField()
@@ -1218,27 +1351,27 @@ class CorePagefollowup(_akit_model):
         db_table = u'core_pagefollowup'
 
 class CorePagefollowupNotifications(_akit_model):
-    pagefollowup = models.OneToOneField('CorePagefollowup', on_delete=models.CASCADE)
-    actionnotification = models.ForeignKey('CoreActionnotification', on_delete=models.CASCADE)
+    pagefollowup = models.OneToOneField('CorePagefollowup', on_delete=models.DO_NOTHING)
+    actionnotification = models.ForeignKey('CoreActionnotification', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_pagefollowup_notifications'
 
 class CorePagetargetchange(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    page = models.OneToOneField('CorePage', on_delete=models.CASCADE)
+    page = models.OneToOneField('CorePage', on_delete=models.DO_NOTHING)
     targets_representation = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'core_pagetargetchange'
 
 class CorePetitionaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionaction'
 
 class CorePetitionactionTargeted(_akit_model):
-    petitionaction = models.OneToOneField('CorePetitionaction', on_delete=models.CASCADE)
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    petitionaction = models.OneToOneField('CorePetitionaction', on_delete=models.DO_NOTHING)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionaction_targeted'
 
@@ -1247,35 +1380,35 @@ class CorePetitiondeliveryjob(_akit_model):
     updated_at = models.DateTimeField()
     single_file = models.IntegerField()
     cover_html = models.TextField()
-    print_template = models.ForeignKey('CorePrinttemplate', on_delete=models.CASCADE)
+    print_template = models.ForeignKey('CorePrinttemplate', on_delete=models.DO_NOTHING)
     allow_pdf_download = models.IntegerField()
     allow_csv_download = models.IntegerField()
     include_email_in_csv = models.IntegerField()
-    template_set = models.ForeignKey('CmsTemplateset', null=True, blank=True, on_delete=models.CASCADE)
+    template_set = models.ForeignKey('CmsTemplateset', null=True, blank=True, on_delete=models.DO_NOTHING)
     limit_delivery = models.IntegerField()
     all_to_all = models.IntegerField()
     header_content = models.TextField()
     footer_content = models.TextField()
-    backgroundtask = models.OneToOneField('CoreBackgroundtask', null=True, blank=True, on_delete=models.CASCADE)
+    backgroundtask = models.OneToOneField('CoreBackgroundtask', null=True, blank=True, on_delete=models.DO_NOTHING)
     date_from = models.DateField(null=True, blank=True)
     date_to = models.DateField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob'
 
 class CorePetitiondeliveryjobPetitions(_akit_model):
-    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob', on_delete=models.CASCADE)
-    page = models.ForeignKey('CorePage', on_delete=models.CASCADE)
+    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob', on_delete=models.DO_NOTHING)
+    page = models.ForeignKey('CorePage', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob_petitions'
 
 class CorePetitiondeliveryjobTargetGroups(_akit_model):
-    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob', on_delete=models.CASCADE)
-    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.CASCADE)
+    petitiondeliveryjob = models.OneToOneField('CorePetitiondeliveryjob', on_delete=models.DO_NOTHING)
+    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitiondeliveryjob_target_groups'
 
 class CorePetitionpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     send_immediate_fax = models.IntegerField()
     send_immediate_email = models.IntegerField()
     immediate_email_subject = models.CharField(max_length=765)
@@ -1285,15 +1418,15 @@ class CorePetitionpage(CorePage):
         db_table = u'core_petitionpage'
 
 class CorePetitionpageTargetGroups(_akit_model):
-    petitionpage = models.OneToOneField('CorePetitionpage', on_delete=models.CASCADE)
-    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.CASCADE)
+    petitionpage = models.OneToOneField('CorePetitionpage', on_delete=models.DO_NOTHING)
+    targetgroup = models.ForeignKey('CoreTargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_petitionpage_target_groups'
 
 class CorePhone(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', related_name='phones', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', related_name='phones', on_delete=models.DO_NOTHING)
     type = models.CharField(max_length=75, unique=True)
     phone = models.CharField(max_length=75)
     source = models.CharField(max_length=75, unique=True)
@@ -1305,7 +1438,7 @@ class CorePrinttemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     header_html = models.TextField()
     template = models.TextField()
     footer_html = models.TextField()
@@ -1326,7 +1459,7 @@ class CoreProduct(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.TextField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
     shippable = models.IntegerField()
@@ -1336,38 +1469,38 @@ class CoreProduct(_akit_model):
         db_table = u'core_product'
 
 class CoreProductTags(_akit_model):
-    product = models.OneToOneField('CoreProduct', on_delete=models.CASCADE)
-    tag = models.ForeignKey('CoreTag', on_delete=models.CASCADE)
+    product = models.OneToOneField('CoreProduct', on_delete=models.DO_NOTHING)
+    tag = models.ForeignKey('CoreTag', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_product_tags'
 
 class CoreRecurringdonationaction(CoreDonationaction):
-    donationaction = models.OneToOneField(CoreDonationaction, parent_link=True, db_column='donationaction_ptr_id', on_delete=models.CASCADE)
+    donationaction = models.OneToOneField(CoreDonationaction, parent_link=True, db_column='donationaction_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationaction'
 
 class CoreRecurringdonationcancelaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationcancelaction'
 
 class CoreRecurringdonationcancelpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationcancelpage'
 
 class CoreRecurringdonationpage(CoreDonationpage):
-    donationpage = models.OneToOneField(CoreDonationpage, parent_link=True, db_column='donationpage_ptr_id', on_delete=models.CASCADE)
+    donationpage = models.OneToOneField(CoreDonationpage, parent_link=True, db_column='donationpage_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationpage'
 
 class CoreRecurringdonationupdateaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationupdateaction'
 
 class CoreRecurringdonationupdatepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     minimum_amount = models.DecimalField(max_digits=12, decimal_places=2)
     class Meta(_akit_model.Meta):
         db_table = u'core_recurringdonationupdatepage'
@@ -1379,27 +1512,27 @@ class CoreRecurringdonortargetingoption(_akit_model):
         db_table = u'core_recurringdonortargetingoption'
 
 class CoreRedirect(_akit_model):
-    short_code = models.CharField(max_length=765, unique=True, blank=True)
+    short_code = models.TextField(max_length=765, unique=True, blank=True)
     url = models.CharField(max_length=12288)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'core_redirect'
 
 class CoreRedirectaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_redirectaction'
 
 class CoreRedirectpage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_redirectpage'
 
 class CoreSavedquerylog(_akit_model):
-    mailing = models.ForeignKey('CoreMailing', related_name='saved_query', on_delete=models.CASCADE)
+    mailing = models.ForeignKey('CoreMailing', related_name='saved_query', on_delete=models.DO_NOTHING)
     action = models.CharField(max_length=765)
     reason = models.CharField(max_length=765)
-    triggered_by = models.ForeignKey('CoreMailing', related_name='saved_query_log_entry', null=True, blank=True, on_delete=models.CASCADE)
+    triggered_by = models.ForeignKey('CoreMailing', related_name='saved_query_log_entry', null=True, blank=True, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField()
     process_id = models.IntegerField(null=True, blank=True)
     targeting_version = models.IntegerField()
@@ -1407,44 +1540,44 @@ class CoreSavedquerylog(_akit_model):
         db_table = u'core_savedquerylog'
 
 class CoreSentadhocmail(_akit_model):
-    template = models.ForeignKey('CoreEmailtemplate', on_delete=models.CASCADE)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    template = models.ForeignKey('CoreEmailtemplate', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_sentadhocmail'
 
 class CoreSignupaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_signupaction'
 
 class CoreSignuppage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_signuppage'
 
 class CoreSpecialtarget(CoreTarget):
-    target = models.OneToOneField(CoreTarget, parent_link=True, db_column='target_ptr_id', on_delete=models.CASCADE)
-    body = models.ForeignKey('CoreSpecialtargetgroup', on_delete=models.CASCADE)
+    target = models.OneToOneField(CoreTarget, parent_link=True, db_column='target_ptr_id', on_delete=models.DO_NOTHING)
+    body = models.ForeignKey('CoreSpecialtargetgroup', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_specialtarget'
 
 class CoreSpecialtargetgroup(CoreTargetgroup):
-    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id', on_delete=models.CASCADE)
+    targetgroup = models.OneToOneField(CoreTargetgroup, parent_link=True, db_column='targetgroup_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_specialtargetgroup'
 
 class CoreSubscription(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
-    list = models.ForeignKey('CoreList', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
+    list = models.ForeignKey('CoreList', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_subscription'
 
 class CoreSubscriptionchangetype(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     description = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
         db_table = u'core_subscriptionchangetype'
@@ -1452,20 +1585,20 @@ class CoreSubscriptionchangetype(_akit_model):
 class CoreSubscriptionhistory(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
-    list = models.ForeignKey('CoreList', on_delete=models.CASCADE)
-    change = models.ForeignKey('CoreSubscriptionchangetype', on_delete=models.CASCADE)
-    action = models.ForeignKey('CoreAction', null=True, blank=True, on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
+    list = models.ForeignKey('CoreList', on_delete=models.DO_NOTHING)
+    change = models.ForeignKey('CoreSubscriptionchangetype', on_delete=models.DO_NOTHING)
+    action = models.ForeignKey('CoreAction', null=True, blank=True, on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_subscriptionhistory'
 
 class CoreSurveyaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_surveyaction'
 
 class CoreSurveypage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_surveypage'
 
@@ -1473,7 +1606,7 @@ class CoreTag(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     times_used = models.IntegerField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'core_tag'
@@ -1481,7 +1614,7 @@ class CoreTag(_akit_model):
 class CoreTargetcontact(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    target = models.ForeignKey('CoreTarget', null=True, blank=True, on_delete=models.CASCADE)
+    target = models.ForeignKey('CoreTarget', null=True, blank=True, on_delete=models.DO_NOTHING)
     email = models.CharField(max_length=765)
     is_mailable = models.IntegerField()
     is_current = models.IntegerField()
@@ -1496,15 +1629,15 @@ class CoreTargetcontact(_akit_model):
 class CoreTargetingqueryreport(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    report = models.ForeignKey('ReportsQueryreport', on_delete=models.CASCADE)
-    targeting = models.ForeignKey('CoreMailingtargeting', on_delete=models.CASCADE)
+    report = models.ForeignKey('ReportsQueryreport', on_delete=models.DO_NOTHING)
+    targeting = models.ForeignKey('CoreMailingtargeting', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_targetingqueryreport'
 
 class CoreTargetingqueryreportparam(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    query = models.ForeignKey('CoreTargetingqueryreport', on_delete=models.CASCADE)
+    query = models.ForeignKey('CoreTargetingqueryreport', on_delete=models.DO_NOTHING)
     name = models.CharField(max_length=765)
     value = models.CharField(max_length=765)
     class Meta(_akit_model.Meta):
@@ -1513,7 +1646,7 @@ class CoreTargetingqueryreportparam(_akit_model):
 class CoreTargetoffice(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    target = models.ForeignKey('CoreTarget', on_delete=models.CASCADE)
+    target = models.ForeignKey('CoreTarget', on_delete=models.DO_NOTHING)
     type = models.CharField(max_length=765)
     address1 = models.CharField(max_length=765)
     address2 = models.CharField(max_length=765)
@@ -1543,7 +1676,7 @@ class CoreTasktrace(_akit_model):
 
 class CoreTimezonepreference(_akit_model):
     tz_name = models.CharField(max_length=192)
-    user = models.OneToOneField('AuthUser', on_delete=models.CASCADE)
+    user = models.OneToOneField('AuthUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_timezonepreference'
 
@@ -1551,7 +1684,7 @@ class CoreTransaction(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     type = models.CharField(max_length=765)
-    order = models.ForeignKey('CoreOrder', on_delete=models.CASCADE)
+    order = models.ForeignKey('CoreOrder', on_delete=models.DO_NOTHING)
     account = models.CharField(max_length=765)
     test_mode = models.IntegerField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -1578,12 +1711,12 @@ class CoreUnsubEmailState(_akit_model):
         db_table = u'core_unsub_email_state'
 
 class CoreUnsubscribeaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_unsubscribeaction'
 
 class CoreUnsubscribepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     use_in_mail_wrapper = models.IntegerField()
     class Meta(_akit_model.Meta):
         db_table = u'core_unsubscribepage'
@@ -1592,8 +1725,8 @@ class CoreUpload(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     path = models.CharField(max_length=765)
-    submitter = models.ForeignKey('AuthUser', null=True, blank=True, on_delete=models.CASCADE)
-    page = models.ForeignKey('CorePage', on_delete=models.CASCADE)
+    submitter = models.ForeignKey('AuthUser', null=True, blank=True, on_delete=models.DO_NOTHING)
+    page = models.ForeignKey('CorePage', on_delete=models.DO_NOTHING)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     rate = models.FloatField(null=True, blank=True)
@@ -1610,7 +1743,7 @@ class CoreUpload(_akit_model):
 class CoreUploaderror(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    upload = models.ForeignKey('CoreUpload', on_delete=models.CASCADE)
+    upload = models.ForeignKey('CoreUpload', on_delete=models.DO_NOTHING)
     worker_pid = models.IntegerField(null=True, blank=True)
     row = models.IntegerField(null=True, blank=True)
     col = models.IntegerField(null=True, blank=True)
@@ -1624,7 +1757,7 @@ class CoreUploaderror(_akit_model):
 class CoreUploadprogress(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    upload = models.ForeignKey('CoreUpload', on_delete=models.CASCADE)
+    upload = models.ForeignKey('CoreUpload', on_delete=models.DO_NOTHING)
     worker_pid = models.IntegerField()
     ok = models.IntegerField()
     warnings = models.IntegerField()
@@ -1636,7 +1769,7 @@ class CoreUploadprogress(_akit_model):
 class CoreUploadwarning(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    upload = models.ForeignKey('CoreUpload', on_delete=models.CASCADE)
+    upload = models.ForeignKey('CoreUpload', on_delete=models.DO_NOTHING)
     worker_pid = models.IntegerField(null=True, blank=True)
     row = models.IntegerField(null=True, blank=True)
     col = models.IntegerField(null=True, blank=True)
@@ -1647,10 +1780,182 @@ class CoreUploadwarning(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'core_uploadwarning'
 
+
+class CoreUserManager(models.Manager):
+    """
+    This manager includes a bunch of methods that alter a queryset to do a
+    reverse join -- i.e. when we query CoreUser, but we want some data
+    joined to it where the *other* table (e.g. CoreUserField or CorePhone)
+    has a ForeignKey pointing to CoreUser.
+
+    Django (AFAIK) doesn't have a bunch of facilities for that, so this is
+    fairly 'low-level' Django ORM hacking -- adding the joins manually.
+
+    It's worth noting, if we 'just' wanted to get a specific query, then
+    Django *does* have a raw sql API.  However:
+    1. That's not compatible with the Django Admin which we are using usefully
+    2. We'd still be met with difficulty in composing queries together --
+       i.e. the whole point of using an ORM is making conditions composable
+       (adding conditions together/incrementally)
+    """
+
+    def action_counts(self, actiontype, min_count):
+        qs = super(CoreUserManager, self).get_queryset()
+        return CoreUserManager.action_counts_filter(qs, actiontype, min_count)
+
+    @classmethod
+    def action_counts_filter(cls, qs, actiontype, min_count=1, since_days=None):
+        # the main reason we have to be this lowlevel is adding the 'HAVING' clause.
+        # otherwise, django's extra() or aggregate() would be fine
+        assert(issubclass(actiontype, CoreAction))
+
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        actionalias = qs.query.join(Join('core_action', qs.query.get_initial_alias(), 'core_action', INNER,
+                                   CoreUser._meta.fields_map['actions'], False))
+        qs.query.join(Join(actiontype._meta.db_table, actionalias, 'acounts_atype', INNER,
+                                               CoreAction._meta.fields_map[actiontype._meta.model_name],
+                                               False))
+        #group by everything except our aggregate annotation
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('actions__id'), 'action_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.id, core_user.id) >= %s'.format(actionalias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+
+        if since_days:
+            since = timezone.now() - datetime.timedelta(days=since_days)
+            qs = qs.extra(where=['{}.created_at > %s'.format(actionalias)], params=[since])
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+
+    @classmethod
+    def actionfield_filter(cls, qs, actionfield_name, actionfield_value=None, pages=None, min_count=1, since_days=None):
+        # note this is tweaked from the method above action_counts_filter
+
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        actionalias = qs.query.join(Join('core_action', qs.query.get_initial_alias(), 'core_action', INNER,
+                                   CoreUser._meta.fields_map['actions'], False))
+        actionfield_alias = qs.query.join(Join(CoreActionfield._meta.db_table, actionalias, 'avals_val', INNER,
+                                               CoreAction._meta.fields_map['customfields'],
+                                               False))
+        #group by everything except our aggregate annotation
+        # this is generically problematic, because if we need to group by other things,
+        #  then this will fail
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('actions__customfields__value'), 'actionval_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.value, core_user.id) >= %s'.format(actionfield_alias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+
+        where2 = ExtraWhere(["{af}.name = %s".format(af=actionfield_alias)],(actionfield_name,))
+        qs.query.where.add(where2, AND)
+        if actionfield_value:
+            where3 = ExtraWhere(["{af}.value = %s".format(af=actionfield_alias)],(actionfield_value,))
+            qs.query.where.add(where3, AND)
+        if pages:
+            qs = qs.extra(where=['{}.page_id IN %s'.format(actionalias)], params=[pages])
+
+        if since_days:
+            since = timezone.now() - datetime.timedelta(days=since_days)
+            qs = qs.extra(where=['{}.created_at > %s'.format(actionalias)], params=[since])
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+    @classmethod
+    def userfield_filter(cls, qs, userfield_name, userfield_value=None, min_count=1, search=False):
+        # note this is tweaked from the method above action_counts_filter
+        # min_count is *mostly* useless, but i think it does actually store multiple user values occasionally, or always.
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', INNER,
+                                      CoreUser._meta.fields_map['customfields'], False))
+
+        #group by everything except our aggregate annotation
+        # this is generically problematic, because if we need to group by other things,
+        #  then this will fail
+        qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs.query.add_annotation(models.Count('customfields__name'), 'uf_count', is_summary=False)
+        xtrawhere = HavingGroupCondition(['count(DISTINCT {}.value, core_user.id) >= %s'.format(uf_alias)], (min_count,))
+        qs.query.where.add(xtrawhere, AND)
+
+        where2 = ExtraWhere(["{uf}.name = %s".format(uf=uf_alias)],(userfield_name,))
+        qs.query.where.add(where2, AND)
+        if userfield_value:
+            op = '=' if not search else 'LIKE'
+            where3 = ExtraWhere(["{uf}.value {op} %s".format(uf=uf_alias, op=op)],(userfield_value,))
+            qs.query.where.add(where3, AND)
+
+        #print('sql query', qs.query.sql_with_params()) #what SQL will we run?
+        return qs
+
+    @classmethod
+    def add_location_to_queryset(cls, qs):
+        """
+        Joins core_location to the query
+        """
+        qa = qs.query.join(Join('core_location', qs.query.get_initial_alias(), 'core_location', LOUTER,
+                                         CoreUser._meta.fields_map['location'], True))
+
+        qs = qs.extra(select={
+            'us_district': '%s.us_district'.format(qa=qa),
+        })
+        return qs
+
+    @classmethod
+    def add_phone_to_queryset(cls, qs, no_groupby=False):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        phone_alias = qs.query.join(Join('core_phone', qs.query.get_initial_alias(), 'core_phone', LOUTER,
+                                         CoreUser._meta.fields_map['phones'], True))
+
+        if not no_groupby:
+            #group by everything except our aggregate annotation (bad general assumption)
+            qs.query.group_by = [x.name for x in CoreUser._meta.local_fields]
+
+        qs = qs.extra(select={
+            'first_phone': '%s.normalized_phone' % phone_alias,
+            'first_phone_type': '%s.type' % phone_alias,
+            'first_phone_source': '%s.source' % phone_alias,
+        })
+        return qs
+
+    @classmethod
+    def add_userfield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
+        """
+        Adds a userfield to a user queryset, possibly conditional on userfieldvalue
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
+        userattr = 'userfield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def add_usergeofield_to_queryset(cls, qs, userfieldname, userfieldvalue=None):
+        """
+        Adds a usergeofield to a user queryset, possibly conditional on userfieldvalue
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_usergeofield', qs.query.get_initial_alias(), 'core_usergeofield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname, customval=userfieldvalue), True))
+        userattr = 'usergeofield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def action_value_filter(cls, qs, fieldname, min_count=1, since_days=None):
+        return qs
+
+
 class CoreUser(_akit_model):
+    objects = CoreUserManager()
+
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    email = models.CharField(max_length=765, unique=True)
+    email = models.TextField(max_length=765, unique=True)
     prefix = models.CharField(max_length=765)
     first_name = models.CharField(max_length=765)
     middle_name = models.CharField(max_length=765)
@@ -1668,9 +1973,14 @@ class CoreUser(_akit_model):
     plus4 = models.CharField(max_length=12)
     country = models.CharField(max_length=765)
     source = models.CharField(max_length=765)
-    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.CASCADE)
+    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.DO_NOTHING)
     rand_id = models.IntegerField()
 
+    # This allows filter queries like this:
+    # CoreUser.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    zipproximity = models.ForeignObject('ZipProximity', on_delete=models.DO_NOTHING,
+                                from_fields=['zip'], to_fields=['zip'],
+                                related_name='user')
 
     # Return Fields As A Dictionary
     def custom_fields(self):
@@ -1689,11 +1999,34 @@ class CoreUser(_akit_model):
     def __str__(self):
         return u'%s %s' % (self.first_name, self.last_name)
 
+    def recent_phone(self):
+        #get's most recent phone and parses makes it readable
+        return getattr(self.phones.order_by('-updated_at').first(), 'normalized_phone', None)
+
     class Meta(_akit_model.Meta):
         db_table = 'core_user'
+        verbose_name_plural = 'Member Search'
+        permissions = (
+            ("csvswap", "Use CSV Swap to get member data"),
+        )
+
+    def api_save(self, **kwargs):
+        class aksettings:
+            AK_USER = settings.AK_USER
+            AK_PASSWORD = settings.AK_PASSWORD
+            AK_BASEURL = settings.AK_BASEURL
+            DEBUG = False
+
+        akapi = AKUserAPI(aksettings)
+        if kwargs:
+            if self.id:
+                res = akapi.update_user(self.id, kwargs)
+            elif 'email' in kwargs:
+                res = akapi.create_user(kwargs)
+
 
 class CoreUserfield(_akit_model):
-    parent = models.ForeignKey('CoreUser', related_name='customfields', on_delete=models.CASCADE)
+    parent = models.ForeignKey('CoreUser', related_name='customfields', on_delete=models.DO_NOTHING)
     name = models.CharField(max_length=765)
     value = models.CharField(max_length=65535)
 
@@ -1703,11 +2036,21 @@ class CoreUserfield(_akit_model):
     def __str__(self):
         return self.value
 
+    def api_save(self, **kwargs):
+        class aksettings:
+            AK_USER = settings.AK_USER
+            AK_PASSWORD = settings.AK_PASSWORD
+            AK_BASEURL = settings.AK_BASEURL
+            DEBUG = False
+
+        akapi = AKUserAPI(aksettings)
+        res = akapi.set_usertag(self.parent_id, {self.name: self.value})
+
 
 class CoreUsermailing(_akit_model):
-    mailing = models.ForeignKey('CoreMailing', on_delete=models.CASCADE)
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
-    subject = models.ForeignKey('CoreMailingsubject', null=True, blank=True, on_delete=models.CASCADE)
+    mailing = models.ForeignKey('CoreMailing', on_delete=models.DO_NOTHING)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
+    subject = models.ForeignKey('CoreMailingsubject', null=True, blank=True, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField()
     class Meta(_akit_model.Meta):
         db_table = u'core_usermailing'
@@ -1715,7 +2058,7 @@ class CoreUsermailing(_akit_model):
 class CoreUseroriginal(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.OneToOneField('CoreUser', primary_key=True, on_delete=models.CASCADE)
+    user = models.OneToOneField('CoreUser', primary_key=True, on_delete=models.DO_NOTHING)
     address1 = models.CharField(max_length=765)
     address2 = models.CharField(max_length=765)
     city = models.CharField(max_length=765)
@@ -1730,26 +2073,26 @@ class CoreUseroriginal(_akit_model):
         db_table = u'core_useroriginal'
 
 class CoreUserupdateaction(CoreAction):
-    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.CASCADE)
+    action = models.OneToOneField(CoreAction, parent_link=True, db_column='action_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_userupdateaction'
 
 class CoreUserupdatepage(CorePage):
-    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.CASCADE)
+    page = models.OneToOneField(CorePage, parent_link=True, db_column='page_ptr_id', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_userupdatepage'
 
 class CoreZp4Queue(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'core_zp4queue'
 
 class DjangoAdminLog(_akit_model):
     action_time = models.DateTimeField()
-    user = models.ForeignKey('AuthUser', on_delete=models.CASCADE)
-    content_type = models.ForeignKey('DjangoContentType', null=True, blank=True, on_delete=models.CASCADE)
+    user = models.ForeignKey('AuthUser', on_delete=models.DO_NOTHING)
+    content_type = models.ForeignKey('DjangoContentType', null=True, blank=True, on_delete=models.DO_NOTHING)
     object_id = models.TextField(blank=True)
     object_repr = models.CharField(max_length=600)
     action_flag = models.IntegerField()
@@ -1759,8 +2102,8 @@ class DjangoAdminLog(_akit_model):
 
 class DjangoContentType(_akit_model):
     name = models.CharField(max_length=300)
-    app_label = models.CharField(max_length=300, unique=True)
-    model = models.CharField(max_length=300, unique=True)
+    app_label = models.TextField(max_length=300, unique=True)
+    model = models.TextField(max_length=300, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'django_content_type'
 
@@ -1775,7 +2118,7 @@ class EventsCampaign(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     public_create_page = models.IntegerField()
     use_title = models.IntegerField()
     default_title = models.CharField(max_length=765)
@@ -1800,8 +2143,89 @@ class EventsCampaign(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'events_campaign'
         verbose_name_plural = 'Event Campaigns'
+        ordering = ['-id'] #so recent campaigns are shown first
+
+    def __str__(self):
+        return '%s %s' % (
+            self.title,
+            self.starts_at.strftime('%m/%d/%y') if self.starts_at else '')
+
+
+class EventsEventManager(models.Manager):
+
+    def public_search(self):
+        return self.__class__.filter_public_search(self.get_queryset())
+
+    @classmethod
+    def filter_public_search(cls, qs, allow_full=False):
+        query = qs.filter(is_private=0,
+                          status="active",
+                          host_is_confirmed=1
+                      )
+        if not allow_full:
+            query = query.extra(where=['max_attendees > attendee_count'])
+        return query
+
+
+    @classmethod
+    def add_eventfield_to_queryset(cls, qs, fieldname, filtervalue=None):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        query_alias = qs.query.join(Join('events_eventfield', qs.query.get_initial_alias(), 'events_eventfield', LOUTER,
+                                         JoinField(EventsEvent._meta.fields_map['customfields'], fieldname), True))
+        #group by everything except our aggregate annotation (bad general assumption)
+        qs.query.group_by = [x.name for x in EventsEvent._meta.local_fields]
+
+        if filtervalue:
+            where = "{qa}.value = %s"
+            qs.query.where.add(ExtraWhere([where.format(qa=query_alias)], [filtervalue]), AND)
+
+        fieldname_id = '%s_id' % fieldname
+        qs = qs.extra(select={
+            fieldname: '%s.value' % query_alias,
+            fieldname_id: '%s.id' % query_alias,
+        })
+        return qs
+
+    @classmethod
+    def add_creator_userfield_to_queryset(cls, qs, userfieldname):
+        """
+        Adds the first phone number to the queryset (probably MySQL dependent on first-row no-fussing)
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        uf_alias = qs.query.join(Join('core_userfield', qs.query.get_initial_alias(), 'core_userfield', LOUTER,
+                                      JoinField(CoreUser._meta.fields_map['customfields'], userfieldname,
+                                                cols=(('creator_id', 'parent_id'),)
+                                            ), True))
+        userattr = 'userfield_%s' % userfieldname
+        qs = qs.extra(select={userattr: '%s.value' % uf_alias})
+        return qs
+
+    @classmethod
+    def filter_proximity(cls, qs, zip, radius, same_state=False):
+        """
+        Joins on ZipProximity and then filters on radius
+        """
+        #args for join: table_name, parent_alias, table_alias, join_type, join_field, nullable
+        query_alias = ZipJoin.add_to_queryset(qs)
+
+        qs.query.where.add(ExtraWhere(
+            ['{qa}.nearby=%s AND {qa}.distance < %s AND {qa}.same_state IN %s'.format(qa=query_alias)],
+            [zip, radius, ( (True,) if same_state else (True, False))]
+        ), AND)
+
+        qs = qs.extra(select={
+            'distance': '%s.distance' % query_alias,
+            'same_state': '%s.same_state' % query_alias,
+        })
+        return qs
+
 
 class EventsEvent(_akit_model):
+    objects = EventsEventManager()
+
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     address1 = models.CharField(max_length=765)
@@ -1815,12 +2239,19 @@ class EventsEvent(_akit_model):
     country = models.CharField(max_length=765)
     longitude = models.FloatField(null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
-    campaign = models.ForeignKey('EventsCampaign', related_name='events', on_delete=models.CASCADE)
+    us_district = models.CharField(max_length=5, verbose_name="US district",
+                                   db_index=True)
+    campaign = models.ForeignKey('EventsCampaign', related_name='events', on_delete=models.DO_NOTHING)
     title = models.CharField(max_length=765)
-    creator = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
+    creator = models.ForeignKey('CoreUser', on_delete=models.DO_NOTHING)
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=96)
+    starts_at_utc = models.DateTimeField(null=True, blank=True)
+    ends_at_utc = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=96, choices=(('active', 'active'),
+                                                      ('cancelled', 'cancelled'),
+                                                      ('deleted', 'deleted'),
+                                                  ))
     host_is_confirmed = models.IntegerField()
     is_private = models.IntegerField(choices=((0, 'public'), (1, 'private')),
                                      verbose_name="private or public")
@@ -1833,12 +2264,33 @@ class EventsEvent(_akit_model):
     directions = models.TextField()
     note_to_attendees = models.TextField()
     notes = models.TextField()
+
+    # This enables filter queries like this:
+    # EventsEvent.objects.filter(zipproximity__nearby='10025', zipproximity__distance__lte=5)
+    zipproximity = models.ForeignObject('ZipProximity', on_delete=models.DO_NOTHING,
+                                from_fields=['zip'], to_fields=['zip'],
+                                related_name='event')
+
     class Meta(_akit_model.Meta):
         db_table = u'events_event'
         verbose_name_plural = 'Events'
 
+    def __str__(self):
+        return '%s (%s%s, %s)' % (
+            self.title,
+            self.starts_at.strftime('%m/%d/%y ') if self.starts_at else '',
+            self.city,
+            self.state
+        )
+
+    def act_as_host_link(self):
+        base_url = getattr(settings, 'AK_BASEURL', False)
+        if base_url:
+            return '%s/event/%s/%s/host/' % (base_url, self.campaign.name, self.id)
+
+
 class EventsEventfield(_akit_model):
-    parent = models.ForeignKey('EventsEvent', related_name='customfields', on_delete=models.CASCADE)
+    parent = models.ForeignKey('EventsEvent', related_name='customfields', on_delete=models.DO_NOTHING)
     name = models.CharField(max_length=765)
     value = models.TextField()
     class Meta(_akit_model.Meta):
@@ -1848,12 +2300,12 @@ class EventsEventfield(_akit_model):
 class EventsEventsignup(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
-    user = models.ForeignKey('CoreUser', on_delete=models.CASCADE)
-    event = models.ForeignKey('EventsEvent', related_name='signups', on_delete=models.CASCADE)
+    user = models.ForeignKey('CoreUser', related_name='signups', on_delete=models.DO_NOTHING)
+    event = models.ForeignKey('EventsEvent', related_name='signups', on_delete=models.DO_NOTHING)
     role = models.CharField(max_length=96, choices=(('host', 'Host'), ('attendee', 'Attendee')))
     status = models.CharField(max_length=96, choices=(('active', 'active'), ('deleted', 'deleted'), ('cancelled', 'cancelled')))
     #this can be the signup OR create page for the event, because the host signup themselves
-    page = models.ForeignKey('CorePage', null=True, related_name='event_signups', on_delete=models.CASCADE)
+    page = models.ForeignKey('CorePage', null=True, related_name='event_signups', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'events_eventsignup'
 
@@ -1862,22 +2314,67 @@ class EventsEventsignup(_akit_model):
 
 
 class EventsEventsignupfield(_akit_model):
-    parent = models.ForeignKey('EventsEventsignup', on_delete=models.CASCADE)
+    parent = models.ForeignKey('EventsEventsignup', on_delete=models.DO_NOTHING)
     name = models.CharField(max_length=765)
     value = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'events_eventsignupfield'
 
+class EventsCampaignvolunteer(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    user = models.ForeignKey('CoreUser', related_name='eventemails', db_index=True, on_delete=models.DO_NOTHING)
+    campaign = models.ForeignKey('EventsCampaign', db_index=True, on_delete=models.DO_NOTHING)
+    is_approved = models.IntegerField()
+    status = models.CharField(max_length=32)  # todo: get status possibilities
+
+class EventsEmailbodylog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    body = models.TextField(null=True, blank=True)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emailbodylog'
+
+    def __str__(self):
+        return self.body
+
+class EventsEmaillog(_akit_model):
+    created_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField()
+    from_type = models.CharField(max_length=32)
+    to_type = models.CharField(max_length=32)
+    event = models.ForeignKey('EventsEvent', db_index=True, on_delete=models.DO_NOTHING)
+    from_user = models.ForeignKey('CoreUser', null=True, blank=True,
+                                  db_index=True,
+                                  related_name='eventemaillogs', on_delete=models.DO_NOTHING)
+    from_admin = models.OneToOneField('AuthUser', null=True, blank=True, db_index=True, on_delete=models.DO_NOTHING)
+    user_written_subject = models.TextField(null=True, blank=True)
+    body = models.ForeignKey('EventsEmailbodylog', db_index=True, on_delete=models.DO_NOTHING)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog'
+
+class EventsEmaillogToUsers(_akit_model):
+    user = models.ForeignKey('CoreUser', db_index=True,
+                             related_name='eventemaillogsreceived', on_delete=models.DO_NOTHING)
+    emaillog = models.ForeignKey('EventsEmaillog', db_index=True,
+                                 related_name='recipients', on_delete=models.DO_NOTHING)
+
+    class Meta(_akit_model.Meta):
+        db_table = u'events_emaillog_to_users'
+
+
 class ReportsDashboardreport(ReportsReport):
-    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id', on_delete=models.CASCADE)
+    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id', on_delete=models.DO_NOTHING)
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_dashboardreport'
 
 class ReportsQueryreport(ReportsReport):
-    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id', on_delete=models.CASCADE)
+    report = models.OneToOneField(ReportsReport, parent_link=True, db_column='report_ptr_id', on_delete=models.DO_NOTHING)
     sql = models.TextField()
-    display_as = models.ForeignKey('ReportsQuerytemplate', on_delete=models.CASCADE)
+    display_as = models.ForeignKey('ReportsQuerytemplate', on_delete=models.DO_NOTHING)
     email_always_csv = models.IntegerField(null=True, blank=True)
     class Meta(_akit_model.Meta):
         db_table = u'reports_queryreport'
@@ -1886,14 +2383,14 @@ class ReportsQuerytemplate(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     template = models.TextField()
     class Meta(_akit_model.Meta):
         db_table = u'reports_querytemplate'
 
 class ReportsReportCategories(_akit_model):
-    report = models.OneToOneField('ReportsReport', on_delete=models.CASCADE)
-    reportcategory = models.ForeignKey('ReportsReportcategory', on_delete=models.CASCADE)
+    report = models.OneToOneField('ReportsReport', on_delete=models.DO_NOTHING)
+    reportcategory = models.ForeignKey('ReportsReportcategory', on_delete=models.DO_NOTHING)
     class Meta(_akit_model.Meta):
         db_table = u'reports_report_categories'
 
@@ -1901,7 +2398,7 @@ class ReportsReportcategory(_akit_model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     class Meta(_akit_model.Meta):
         db_table = u'reports_reportcategory'
 
