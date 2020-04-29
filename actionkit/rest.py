@@ -1,7 +1,7 @@
 import requests
 import json
 
-from urlparse import urlparse
+from urllib import parse
 import urllib
 
 from actionkit.errors import *
