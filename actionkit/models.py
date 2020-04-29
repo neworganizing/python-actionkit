@@ -89,15 +89,15 @@ class CorePage(_akit_model):
     hidden = models.IntegerField()
     title = models.CharField(max_length=765)
     name = models.CharField(max_length=765, unique=True)
-    hosted_with = models.ForeignKey('CoreHostingplatform', on_delete=models.CASCADE)
+    hosted_with = models.ForeignKey('CoreHostingplatform', on_delete=models.DO_NOTHING)
     url = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
-    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.CASCADE)
-    multilingual_campaign = models.ForeignKey('CoreMultilingualcampaign', null=True, blank=True, on_delete=models.CASCADE)
+    lang = models.ForeignKey('CoreLanguage', null=True, blank=True, on_delete=models.DO_NOTHING)
+    multilingual_campaign = models.ForeignKey('CoreMultilingualcampaign', null=True, blank=True, on_delete=models.DO_NOTHING)
     goal = models.IntegerField(null=True, blank=True)
     goal_type = models.CharField(max_length=765)
     status = models.CharField(max_length=765)
-    list = models.ForeignKey('CoreList', on_delete=models.CASCADE)
+    list = models.ForeignKey('CoreList', on_delete=models.DO_NOTHING)
 
     def fields(self):
         return CorePagefield.objects.filter(parent_id=self)
@@ -521,7 +521,7 @@ class CmsUserFormField(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'cms_user_form_field'
 
-    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.DO_NOTHING,
                                            from_fields=['form_id'], to_fields=['id'],
                                            related_name='_fields_unfiltered')
 
@@ -928,7 +928,7 @@ class CoreEventsignuppage(CorePage):
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignuppage'
 
-    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.DO_NOTHING,
                                 from_fields=['page_id'], to_fields=['page_id'],
                                 related_name='eventsignuppage')
 
