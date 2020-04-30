@@ -48,6 +48,26 @@ class AKUserAPI(base.ActionKitAPI):
         return {'res': res,
                 'user': res.json() if res.status_code == 200 else None}
 
+    def user_search(self, **kwargs):
+        print('user search called')
+        res = ''
+        if kwargs['user_id']:
+            res = self.client.get('%s/rest/v1/user/%s/' % (self.base_url, kwargs['user_id']))
+        else:
+            search_string = '?'
+            search_array = []
+            for key in kwargs:
+                print(key)
+                if kwargs[key]:
+                    item_search_string = key + '=' + kwargs[key]
+                    search_array.append(item_search_string)
+            amp = '&'
+            search_string += amp.join(search_array)
+            print(search_string)
+            # for .... reasons... this can NOT have a trailing slash
+            res = self.client.get('%s/rest/v1/user/%s' % (self.base_url, search_string))
+        return {'status_code': res.status_code, 'user': res.json()}
+
     def get_phone(self, phone_id=None, url=None):
         assert(phone_id or url)
         if getattr(self.settings, 'AK_TEST', False):
