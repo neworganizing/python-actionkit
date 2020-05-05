@@ -1,7 +1,5 @@
 from actionkit.api.base import ActionKitAPI
 
-from urllib.parse import urlencode
-
 class AKOrderAPI(ActionKitAPI):
 
     def get_order_detail(self, order_id):
@@ -25,28 +23,20 @@ class AKOrderAPI(ActionKitAPI):
 
     def list_orders(self, user_id=False, query_params={}):
         if user_id:
-            result = self.client.get(
-                '%s/rest/v1/order/?user=%s&%s' % (
-                    self.base_url, user_id, urlencode(query_params)))
-        else:
-            result = self.client.get(
-                '%s/rest/v1/order/?%s' % (
-                    self.base_url, urlencode(query_params)))
+            query_params['user'] = user_id
+        result = self.client.get(
+            '%s/rest/v1/order/' % (self.base_url),
+            params = query_params
+        )
         rv = {'res': result, 'objects': []}
-        paginate = True
-        while paginate:
-            if result.status_code == 200:
-                json = result.json()
-                objects = json.get('objects', None)
-                if objects:
-                    rv['objects'].extend(objects)
-                next_page = json.get('meta', None).get('next', None)
-                if next_page:
-                    result = self.client.get('%s%s' % (self.base_url, next_page))
-                else:
-                    paginate = False
+        while result.status_code == 200:
+            json = result.json()
+            rv['objects'].extend(json.get('objects', []))
+            next_page = json.get('meta', None).get('next', None)
+            if next_page:
+                result = self.client.get('%s%s' % (self.base_url, next_page))
             else:
-                return rv
+                break
         return rv
 
 
