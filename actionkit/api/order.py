@@ -1,12 +1,6 @@
 from actionkit.api.base import ActionKitAPI
 
-try:
-    import urllib.parse
-    encode_url = urllib.parse.urlencode
-except ImportError:
-    # python2
-    import urllib
-    encode_url = urllib.urlencode
+from urllib.parse import urlencode
 
 class AKOrderAPI(ActionKitAPI):
 
@@ -33,11 +27,11 @@ class AKOrderAPI(ActionKitAPI):
         if user_id:
             result = self.client.get(
                 '%s/rest/v1/order/?user=%s&%s' % (
-                    self.base_url, user_id, encode_url(query_params)))
+                    self.base_url, user_id, urlencode(query_params)))
         else:
             result = self.client.get(
                 '%s/rest/v1/order/?%s' % (
-                    self.base_url, encode_url(query_params)))
+                    self.base_url, urlencode(query_params)))
         rv = {'res': result, 'objects': []}
         paginate = True
         while paginate:
