@@ -1,7 +1,5 @@
 from actionkit.api.base import ActionKitAPI
 
-from urllib.parse import urlencode
-
 class AKOrderRecurringAPI(ActionKitAPI):
 
     def get_orderrecurring_detail(self, orderrecurring_id):
@@ -34,28 +32,20 @@ class AKOrderRecurringAPI(ActionKitAPI):
         if getattr(self.settings, 'AK_TEST', False):
             return TEST_DATA.get('list_orderrecurring')
         if user_id:
-            result = self.client.get(
-                '%s/rest/v1/orderrecurring/?user=%s&%s' % (
-                    self.base_url, user_id, urlencode(query_params)))
-        else:
-            result = self.client.get(
-                '%s/rest/v1/orderrecurring/?%s' % (
-                    self.base_url, urlencode(query_params)))
+            query_params['user'] = user_id
+        result = self.client.get(
+            '%s/rest/v1/orderrecurring/' % (self.base_url),
+            params=query_params
+        )
         rv = {'res': result, 'objects': []}
-        paginate = True
-        while paginate:
-            if result.status_code == 200:
-                json = result.json()
-                objects = json.get('objects', None)
-                if objects:
-                    rv['objects'].extend(objects)
-                next_page = json.get('meta', None).get('next', None)
-                if next_page:
-                    result = self.client.get('%s%s' % (self.base_url, next_page))
-                else:
-                    paginate = False
+        while result.status_code == 200:
+            json = result.json()
+            rv['objects'].extend(json.get('objects', []))
+            next_page = json.get('meta', None).get('next', None)
+            if next_page:
+                result = self.client.get('%s%s' % (self.base_url, next_page))
             else:
-                return rv
+                break
         return rv
 
 
@@ -87,7 +77,6 @@ class AKOrderRecurringAPI(ActionKitAPI):
             'success': (200 < res.status_code < 400)
         }
 
-# TODO: add test data
 TEST_DATA = {
     "get_orderrecurring_detail": {
         'res': None,
