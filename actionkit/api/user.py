@@ -26,18 +26,22 @@ class AKUserAPI(base.ActionKitAPI):
             data=json.dumps({ 'fields': name_or_dict }))
         return self._http_return(res)
 
-    def update_user(self, user_id, update_dict):
-        res = self.client.patch(
-            #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/user/%s/' % (self.base_url, user_id),
-            data=json.dumps(update_dict))
-        return self._http_return(res)
-
     def add_allowed_usertag(self, userfield_name):
         res = self.client.post(
             '%s/rest/v1/alloweduserfield/' % self.base_url,
             json={'name': userfield_name})
         return self._http_return(res)
+
+    def create_user(self, user_dict):
+        if getattr(self.settings, 'AK_TEST', False):
+            return TEST_DATA.get(user_dict.get('email', 'create_user'))
+        res = self.client.post(
+            '%s/rest/v1/user/' % self.base_url,
+            json=user_dict)
+        rv = {'res': res}
+        if res.headers.get('Location'):
+            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
+        return rv
 
     def get_user(self, user_id):
         if getattr(self.settings, 'AK_TEST', False):
@@ -48,8 +52,14 @@ class AKUserAPI(base.ActionKitAPI):
         return {'res': res,
                 'user': res.json() if res.status_code == 200 else None}
 
+    def update_user(self, user_id, update_dict):
+        res = self.client.patch(
+            #the '/' at the end is IMPORTANT!
+            '%s/rest/v1/user/%s/' % (self.base_url, user_id),
+            data=json.dumps(update_dict))
+        return self._http_return(res)
+
     def user_search(self, **kwargs):
-        print('user search called')
         res = ''
         if kwargs['user_id']:
             res = self.client.get('%s/rest/v1/user/%s/' % (self.base_url, kwargs['user_id']))
@@ -57,16 +67,57 @@ class AKUserAPI(base.ActionKitAPI):
             search_string = '?'
             search_array = []
             for key in kwargs:
-                print(key)
                 if kwargs[key]:
                     item_search_string = key + '=' + kwargs[key]
                     search_array.append(item_search_string)
             amp = '&'
             search_string += amp.join(search_array)
-            print(search_string)
             # for .... reasons... this can NOT have a trailing slash
             res = self.client.get('%s/rest/v1/user/%s' % (self.base_url, search_string))
         return {'status_code': res.status_code, 'user': res.json()}
+
+    def get_orders(self, user_id=None, orders_url=None):
+        if not orders_url:
+            user_url = '%s/rest/v1/user/%s/' % (self.base_url, user_id)
+            res = self.client.get(user_url)
+            user = res.json() if res.status_code == 200 else None
+            orders_url = user['orders']
+        orders_res = self.client.get('%s%s' % (self.base_url, orders_url))
+        orders = orders_res.json() if orders_res.status_code == 200 else None
+        return {'response': orders_res,
+                'orders': orders}
+
+    def get_orders_recurring(self, user_id=None, orders_recurring_url=None):
+        if not orders_recurring_url:
+            user_url = '%s/rest/v1/user/%s/' % (self.base_url, user_id)
+            res = self.client.get(user_url)
+            user = res.json() if res.status_code == 200 else None
+            orders_recurring_url = user['orderrecurrings']
+        orders_res = self.client.get('%s%s' % (self.base_url, orders_recurring_url))
+        orders = orders_res.json() if orders_res.status_code == 200 else None
+        return {'response': orders_res,
+                'orders': orders}
+
+    def add_phone(self, user_id, phone, phone_type, source='restful_api'):
+        user_url = '%s/rest/v1/user/%s/' % (self.base_url, user_id)
+
+        response = self.client.get(user_url).json()
+        phones = response['phones']
+
+        # Add the new phone number
+        phones.append({
+            "type": phone_type,
+            "phone": phone,
+            "user": '/rest/v1/user/{0}/'.format(user_id),
+            "source": source
+        })
+        # Patch it to the user's record
+        patch = self.client.patch(user_url,
+            json={
+                "phones": phones
+            }
+        )
+        return self._http_return(patch)
 
     def get_phone(self, phone_id=None, url=None):
         assert(phone_id or url)
@@ -80,25 +131,19 @@ class AKUserAPI(base.ActionKitAPI):
         return {'res': res,
                 'phone': res.json() if res.status_code == 200 else None}
 
-    def create_user(self, user_dict):
-        if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA.get(user_dict.get('email', 'create_user'))
-        res = self.client.post(
-            '%s/rest/v1/user/' % self.base_url,
-            json=user_dict)
-        rv = {'res': res}
-        if res.headers.get('Location'):
-            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
-        return rv
-
-    def add_phone(self, phone_dict):
-        res = self.client.post(
-            '%s/rest/v1/phone/' % self.base_url,
-            json=phone_dict)
-        rv = {'res': res}
-        if res.headers.get('Location'):
-            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
-        return rv
+    def update_phone(self, phone_id, update_dict):
+        if 'delete' in update_dict:
+            res = self.client.delete(
+                '%s/rest/v1/phone/%s/' % (self.base_url, phone_id))
+            return self._http_return(res)
+            # res = delete_phone(phone_id)
+            # return self._http_return(res)
+        else:
+            res = self.client.patch(
+                #the '/' at the end is IMPORTANT!
+                '%s/rest/v1/phone/%s/' % (self.base_url, phone_id),
+                data=json.dumps(update_dict))
+            return self._http_return(res)
 
     def login_token(self, user_id, ttl=86400):
         res = self.client.post(
