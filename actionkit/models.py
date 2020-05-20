@@ -88,7 +88,7 @@ class CorePage(_akit_model):
     updated_at = models.DateTimeField()
     hidden = models.IntegerField()
     title = models.CharField(max_length=765)
-    name = models.CharField(max_length=765, unique=True)
+    name = models.TextField(max_length=765, unique=True)
     hosted_with = models.ForeignKey('CoreHostingplatform', on_delete=models.DO_NOTHING)
     url = models.CharField(max_length=765)
     type = models.CharField(max_length=765)
