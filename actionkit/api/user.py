@@ -59,22 +59,12 @@ class AKUserAPI(base.ActionKitAPI):
             data=json.dumps(update_dict))
         return self._http_return(res)
 
-    def user_search(self, **kwargs):
+    def user_search(self, query_params={}):
         res = ''
-        if kwargs['user_id']:
-            res = self.client.get('%s/rest/v1/user/%s/' % (self.base_url, kwargs['user_id']))
-        else:
-            search_string = '?'
-            search_array = []
-            for key in kwargs:
-                if kwargs[key]:
-                    item_search_string = key + '=' + kwargs[key]
-                    search_array.append(item_search_string)
-            amp = '&'
-            search_string += amp.join(search_array)
-            # for .... reasons... this can NOT have a trailing slash
-            res = self.client.get('%s/rest/v1/user/%s' % (self.base_url, search_string))
-        return {'status_code': res.status_code, 'user': res.json()}
+        search_string = '?'
+        search_array = []
+        res = self.client.get('%s/rest/v1/user/' % (self.base_url), params=query_params)
+        return {'res': res, 'users': res.json() if res.status_code == 200 else None}
 
     def get_orders(self, user_id=None, orders_url=None):
         if not orders_url:

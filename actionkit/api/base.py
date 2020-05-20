@@ -1,5 +1,4 @@
 import requests
-# modded this to let me send test or prod creds. not sure if this is the right approach. TKTK
 class ActionKitAPI(object):
 
     def __init__(self, settings):
@@ -22,5 +21,5 @@ class ActionKitAPI(object):
         """
         Return based on http response success
         """
-        #if 200 >= res.status_code < 300:
+        # if 200 >= res.status_code < 300:
         return res
