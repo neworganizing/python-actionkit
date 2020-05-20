@@ -26,18 +26,22 @@ class AKUserAPI(base.ActionKitAPI):
             data=json.dumps({ 'fields': name_or_dict }))
         return self._http_return(res)
 
-    def update_user(self, user_id, update_dict):
-        res = self.client.patch(
-            #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/user/%s/' % (self.base_url, user_id),
-            data=json.dumps(update_dict))
-        return self._http_return(res)
-
     def add_allowed_usertag(self, userfield_name):
         res = self.client.post(
             '%s/rest/v1/alloweduserfield/' % self.base_url,
             json={'name': userfield_name})
         return self._http_return(res)
+
+    def create_user(self, user_dict):
+        if getattr(self.settings, 'AK_TEST', False):
+            return TEST_DATA.get(user_dict.get('email', 'create_user'))
+        res = self.client.post(
+            '%s/rest/v1/user/' % self.base_url,
+            json=user_dict)
+        rv = {'res': res}
+        if res.headers.get('Location'):
+            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
+        return rv
 
     def get_user(self, user_id):
         if getattr(self.settings, 'AK_TEST', False):
@@ -47,6 +51,24 @@ class AKUserAPI(base.ActionKitAPI):
             '%s/rest/v1/user/%s/' % (self.base_url, user_id))
         return {'res': res,
                 'user': res.json() if res.status_code == 200 else None}
+
+    def update_user(self, user_id, update_dict):
+        res = self.client.patch(
+            #the '/' at the end is IMPORTANT!
+            '%s/rest/v1/user/%s/' % (self.base_url, user_id),
+            data=json.dumps(update_dict))
+        return self._http_return(res)
+
+    def user_search(self, query_params={}):
+        res = ''
+        search_string = '?'
+        search_array = []
+        res = self.client.get('%s/rest/v1/user/' % (self.base_url), params=query_params)
+        return {'res': res, 'users': res.json() if res.status_code == 200 else None}
+
+    def add_phone(self, user_id, phone, phone_type):
+        res = self.client.post('%s/rest/v1/phone/' % (self.base_url), json={'user': user_id, 'phone_type': phone_type, 'phone': phone})
+        return {'res': res, phone: res.json() if res.status_code == 200 else None}
 
     def get_phone(self, phone_id=None, url=None):
         assert(phone_id or url)
@@ -60,25 +82,21 @@ class AKUserAPI(base.ActionKitAPI):
         return {'res': res,
                 'phone': res.json() if res.status_code == 200 else None}
 
-    def create_user(self, user_dict):
-        if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA.get(user_dict.get('email', 'create_user'))
-        res = self.client.post(
-            '%s/rest/v1/user/' % self.base_url,
-            json=user_dict)
-        rv = {'res': res}
-        if res.headers.get('Location'):
-            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
-        return rv
-
-    def add_phone(self, phone_dict):
-        res = self.client.post(
-            '%s/rest/v1/phone/' % self.base_url,
-            json=phone_dict)
-        rv = {'res': res}
-        if res.headers.get('Location'):
-            rv['id'] = re.findall(r'(\d+)/$', res.headers['Location'])[0]
-        return rv
+    def update_phone(self, phone_id, update_dict):
+        if 'delete' in update_dict:
+            res = self.client.delete(
+                '%s/rest/v1/phone/%s/' % (self.base_url, phone_id))
+            return {'res': res}
+            # return self._http_return(res)
+            # res = delete_phone(phone_id)
+            # return self._http_return(res)
+        else:
+            res = self.client.patch(
+                #the '/' at the end is IMPORTANT!
+                '%s/rest/v1/phone/%s/' % (self.base_url, phone_id),
+                data=json.dumps(update_dict))
+            return {'res': res, 'phone': res.json() if res.status_code == 200 else None}
+            # return self._http_return(res)
 
     def login_token(self, user_id, ttl=86400):
         res = self.client.post(

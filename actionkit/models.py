@@ -521,7 +521,7 @@ class CmsUserFormField(_akit_model):
     class Meta(_akit_model.Meta):
         db_table = u'cms_user_form_field'
 
-    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+    eventsignupform = models.ForeignObject(CmsEventSignupForm, on_delete=models.DO_NOTHING,
                                            from_fields=['form_id'], to_fields=['id'],
                                            related_name='_fields_unfiltered')
 
@@ -928,7 +928,7 @@ class CoreEventsignuppage(CorePage):
     class Meta(_akit_model.Meta):
         db_table = u'core_eventsignuppage'
 
-    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.CASCADE,
+    form = models.ForeignObject(CmsEventSignupForm, on_delete=models.DO_NOTHING,
                                 from_fields=['page_id'], to_fields=['page_id'],
                                 related_name='eventsignuppage')
 

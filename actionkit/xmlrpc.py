@@ -1,11 +1,8 @@
-try: #python3
-    from xmlrpc.client import ServerProxy
-except ImportError: #python2
-    from xmlrpclib import ServerProxy
+import xmlrpc.client as xmlrpc
 
 from actionkit.errors import ActionKitGeneralError
 
-class ActionKitXML(ServerProxy, object):
+class ActionKitXML(xmlrpc.ServerProxy, object):
     def __init__(self, **kwargs):
         if 'instance' not in kwargs:
             raise ActionKitGeneralError("No Instance Provided")
