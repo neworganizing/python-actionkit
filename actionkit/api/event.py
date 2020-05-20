@@ -5,15 +5,6 @@ import requests
 from actionkit.api import base
 from actionkit.api.action import AKActionAPI
 
-try:
-    import urllib.parse
-    encode_url = urllib.parse.urlencode
-except ImportError:
-    # python2
-    import urllib
-    encode_url = urllib.urlencode
-
-
 class AKEventAPI(base.ActionKitAPI):
 
     def get_event(self, event_id):
@@ -66,13 +57,11 @@ class AKEventAPI(base.ActionKitAPI):
             if '/' in path:
                 return re.findall(r'/(\d+)/?$', path)[0]
         if user_id:
-            result = self.client.get(
-                '%s/rest/v1/eventsignup/?user=%s&%s' % (
-                    self.base_url, user_id, encode_url(query_params)))
-        else:
-            result = self.client.get(
-                '%s/rest/v1/eventsignup/?%s' % (
-                    self.base_url, encode_url(query_params)))
+            query_params['user'] = user_id
+        result = self.client.get(
+            '%s/rest/v1/eventsignup/' % (self.base_url),
+            params=query_params
+        )
         final_result = {'res': result}
         if result.status_code == 200:
             json = result.json()
