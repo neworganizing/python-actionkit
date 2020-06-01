@@ -45,7 +45,11 @@ class AKUserAPI(base.ActionKitAPI):
 
     def get_user(self, user_id):
         if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA.get(user_id)
+            if str(user_id) in TEST_DATA:
+                res = self.test_service_post(TEST_DATA[str(user_id)])
+            else:
+                res = self.test_service_post(None)
+            return {'res': res, 'user': res.user}
         res = self.client.get(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id))
@@ -53,6 +57,12 @@ class AKUserAPI(base.ActionKitAPI):
                 'user': res.json() if res.status_code == 200 else None}
 
     def update_user(self, user_id, update_dict):
+        if getattr(self.settings, 'AK_TEST', False):
+            if str(user_id) in TEST_DATA:
+                res = self.test_service_post(TEST_DATA[str(user_id)])
+            else:
+                res = self.test_service_post(None)
+            return {'res': res, 'user': res.user}
         res = self.client.patch(
             #the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id),
@@ -73,7 +83,10 @@ class AKUserAPI(base.ActionKitAPI):
     def get_phone(self, phone_id=None, url=None):
         assert(phone_id or url)
         if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA.get(url)
+            if url:
+                return TEST_DATA.get(url)
+            else:
+                return TEST_DATA.get(str(phone_id))
         if not url:
             #the '/' at the end is IMPORTANT!
             url = '/rest/v1/phone/%s/' % phone_id
@@ -87,16 +100,12 @@ class AKUserAPI(base.ActionKitAPI):
             res = self.client.delete(
                 '%s/rest/v1/phone/%s/' % (self.base_url, phone_id))
             return {'res': res}
-            # return self._http_return(res)
-            # res = delete_phone(phone_id)
-            # return self._http_return(res)
         else:
             res = self.client.patch(
                 #the '/' at the end is IMPORTANT!
                 '%s/rest/v1/phone/%s/' % (self.base_url, phone_id),
                 data=json.dumps(update_dict))
             return {'res': res, 'phone': res.json() if res.status_code == 200 else None}
-            # return self._http_return(res)
 
     def login_token(self, user_id, ttl=86400):
         res = self.client.post(
@@ -153,7 +162,15 @@ class AKUserAPI(base.ActionKitAPI):
                                  for s in row])
         return self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
                                 autocreate_user_fields=autocreate_user_fields)
-
+    def test_service_post(self, data):
+        r = requests.Response()
+        if data == None:
+            r.user = []
+            r.status_code = 404
+        else:
+            r.status_code = 200
+            r.user = data['user']
+        return r
 
 TEST_DATA = {
     'create_user': {
@@ -178,8 +195,22 @@ TEST_DATA = {
             "user": "/rest/v1/user/123123/"
         }
     },
+    '8675309': {
+        'res': 200,
+        'phone': {
+            "created_at": "2015-11-24T21:07:58",
+            "id": 8675309,
+            "normalized_phone": "5558675309",
+            "phone": "5558675309",
+            "resource_uri": "/rest/v1/phone/8675309/",
+            "source": "user",
+            "type": "home",
+            "updated_at": "2016-03-29T16:41:10",
+            "user": "/rest/v1/user/123123/"
+        }
+    },
     '123123': { #fake userid
-        'res': None,
+        'res': 200,
          #some fields removed for brevity.
          # add them back if you need them for testing
         'user': {
@@ -189,9 +220,10 @@ TEST_DATA = {
             "country": "United States",
             "created_at": "2015-11-18T16:22:31",
             "email": "example@example.com",
-            "fields": { },
+            "fields": {},
             "first_name": "Roger",
             "last_name": "AndMe",
+            "middle_name": "Annabelle",
             "id": 123123,
             "phones": [
                 "/rest/v1/phone/8675309/"
@@ -202,5 +234,5 @@ TEST_DATA = {
             "updated_at": "2016-07-11T18:19:26",
             "zip": "44123",
         }
-    }
+    },
 }
