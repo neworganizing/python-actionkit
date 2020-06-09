@@ -44,8 +44,11 @@ class AKUserAPI(base.ActionKitAPI):
         return rv
 
     def get_user(self, user_id):
+        print('get user called') #this is not printing. Is it not calling this at all?
         if getattr(self.settings, 'AK_TEST', False):
+            print user_id
             if str(user_id) in TEST_DATA:
+                print("user in test data")
                 res = self.test_service_post(TEST_DATA[str(user_id)])
             else:
                 res = self.test_service_post(None)
@@ -221,7 +224,7 @@ TEST_DATA = {
             "created_at": "2015-11-18T16:22:31",
             "email": "example@example.com",
             "fields": {},
-            "first_name": "Roger",
+            "first_name": "Joey",
             "last_name": "AndMe",
             "middle_name": "Annabelle",
             "id": 123123,
