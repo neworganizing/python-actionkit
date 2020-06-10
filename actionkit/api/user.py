@@ -44,11 +44,8 @@ class AKUserAPI(base.ActionKitAPI):
         return rv
 
     def get_user(self, user_id):
-        print('get user called') #this is not printing. Is it not calling this at all?
         if getattr(self.settings, 'AK_TEST', False):
-            print user_id
             if str(user_id) in TEST_DATA:
-                print("user in test data")
                 res = self.test_service_post(TEST_DATA[str(user_id)])
             else:
                 res = self.test_service_post(None)
@@ -178,17 +175,17 @@ class AKUserAPI(base.ActionKitAPI):
 TEST_DATA = {
     'create_user': {
         'res': None,
-        'id': 123123,
+        'id': "123123a",
     },
     'example@example.com': {
         'res': None,
-        'id': 123123,
+        'id': "123123a",
     },
     '/rest/v1/phone/8675309/': {
         'res': None,
         'phone': {
             "created_at": "2015-11-24T21:07:58",
-            "id": 8675309,
+            "id": "8675309a",
             "normalized_phone": "5558675309",
             "phone": "5558675309",
             "resource_uri": "/rest/v1/phone/8675309/",
@@ -198,11 +195,11 @@ TEST_DATA = {
             "user": "/rest/v1/user/123123/"
         }
     },
-    '8675309': {
+    '8675309a': {
         'res': 200,
         'phone': {
             "created_at": "2015-11-24T21:07:58",
-            "id": 8675309,
+            "id": "8675309a",
             "normalized_phone": "5558675309",
             "phone": "5558675309",
             "resource_uri": "/rest/v1/phone/8675309/",
@@ -212,7 +209,7 @@ TEST_DATA = {
             "user": "/rest/v1/user/123123/"
         }
     },
-    '123123': { #fake userid
+    '123123a': { #fake userid
         'res': 200,
          #some fields removed for brevity.
          # add them back if you need them for testing
@@ -227,9 +224,9 @@ TEST_DATA = {
             "first_name": "Joey",
             "last_name": "AndMe",
             "middle_name": "Annabelle",
-            "id": 123123,
+            "id": "123123a",
             "phones": [
-                "/rest/v1/phone/8675309/"
+                "/rest/v1/phone/8675309a/"
             ],
             "postal": "44123",
             "region": "OH",
