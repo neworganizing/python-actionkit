@@ -44,5 +44,4 @@ class AKOrderAPI(ActionKitAPI):
         result = self.client.post(
             '%s/rest/v1/order/%s/reverse/' % (self.base_url, order_id)
         )
-        print (result)
         return {'res': result}
