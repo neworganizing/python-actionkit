@@ -57,9 +57,9 @@ class AKOrderRecurringAPI(ActionKitAPI):
 
 
     def update_orderrecurring_status(self, orderrecurring_id, status):
-        """ 
+        """
             Use ONLY to patch the status field.
-            DO NOT use this to cancel a recurring donation; use the 
+            DO NOT use this to cancel a recurring donation; use the
             cancel_orderrecurring method instead, and then optionally
             use this method to patch the status.
             To change a recurring donation amount, cancel the existing
