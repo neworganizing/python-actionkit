@@ -10,7 +10,6 @@ class AKOrderAPI(ActionKitAPI):
             '%s/rest/v1/order/%s' % (
                 self.base_url, order_id))
         rv = {'res': result}
-
         if result.status_code == 200:
             json = result.json()
             rv.update(json)
@@ -18,6 +17,17 @@ class AKOrderAPI(ActionKitAPI):
             user_detail_res = self.client.get('%s%s' % (self.base_url, user_detail))
             if user_detail_res.status_code == 200:
                 rv['user_detail'] = user_detail_res.json()
+            order_details = json.get('orderdetails')
+            products = []
+            for item in order_details:
+                order_detail_res = self.client.get('%s%s' % (self.base_url, item))
+                if order_detail_res.status_code == 200:
+                    order_detail_json = order_detail_res.json()
+                    if 'product' in order_detail_json:
+                        product_detail = order_detail_json['product']
+                        product_detail_res = self.client.get('%s%s' % (self.base_url, product_detail))
+                        products.append(product_detail_res.json())
+            rv['products'] = products
         return rv
 
 
