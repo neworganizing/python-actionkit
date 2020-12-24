@@ -86,6 +86,7 @@ class AKUserAPI(base.ActionKitAPI):
             if url:
                 return TEST_DATA.get(url)
             else:
+                print(phone_id)
                 return TEST_DATA.get(str(phone_id))
         if not url:
             #the '/' at the end is IMPORTANT!
@@ -175,41 +176,41 @@ class AKUserAPI(base.ActionKitAPI):
 TEST_DATA = {
     'create_user': {
         'res': None,
-        'id': "123123a",
+        'id': 1234567890123,
     },
     'example@example.com': {
         'res': None,
-        'id': "123123a",
+        'id': 1234567890123,
     },
-    '/rest/v1/phone/8675309/': {
+    '/rest/v1/phone/8675309867530/': {
         'res': None,
         'phone': {
             "created_at": "2015-11-24T21:07:58",
-            "id": "8675309a",
+            "id": 8675309867530,
             "normalized_phone": "5558675309",
             "phone": "5558675309",
-            "resource_uri": "/rest/v1/phone/8675309/",
+            "resource_uri": "/rest/v1/phone/8675309867530/",
             "source": "user",
             "type": "home",
             "updated_at": "2016-03-29T16:41:10",
-            "user": "/rest/v1/user/123123/"
+            "user": "/rest/v1/user/1234567890123/"
         }
     },
-    '8675309a': {
+    '8675309867530': {
         'res': 200,
         'phone': {
             "created_at": "2015-11-24T21:07:58",
-            "id": "8675309a",
+            "id": 8675309867530,
             "normalized_phone": "5558675309",
             "phone": "5558675309",
-            "resource_uri": "/rest/v1/phone/8675309/",
+            "resource_uri": "/rest/v1/phone/8675309867530/",
             "source": "user",
             "type": "home",
             "updated_at": "2016-03-29T16:41:10",
-            "user": "/rest/v1/user/123123/"
+            "user": "/rest/v1/user/1234567890123/"
         }
     },
-    '123123a': { #fake userid
+    '1234567890123': { #fake userid
         'res': 200,
          #some fields removed for brevity.
          # add them back if you need them for testing
@@ -224,9 +225,9 @@ TEST_DATA = {
             "first_name": "Joey",
             "last_name": "AndMe",
             "middle_name": "Annabelle",
-            "id": "123123a",
+            "id": 1234567890123,
             "phones": [
-                "/rest/v1/phone/8675309a/"
+                "/rest/v1/phone/8675309867530/"
             ],
             "postal": "44123",
             "region": "OH",
