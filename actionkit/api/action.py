@@ -22,6 +22,26 @@ class AKActionAPI(base.ActionKitAPI):
 
         return {'res': result}
 
+    def get_action(self, action_id=False, action_url=False):
+        """
+            Get order and billing info
+        """
+        if getattr(self.settings, 'AK_TEST', True):
+            if action_url and str(action_url) in TEST_DATA['actions']:
+                response = self.test_service_post(TEST_DATA['actions'][action_url])
+            else:
+                response = self.test_service_post(None)
+            return {'response': response, 'action': response.action}
+        if action_url:
+            response = self.client.get('%s%s' % (self.base_url, action_url))
+            return {'response': response, 'action': response.json()}
+        elif action_id:
+            response = self.client.get(
+                '%s/rest/v1/action/%s' % (self.base_url, action_id),
+                )
+
+            return {'response': response, 'action': response.json()}
+
     def update_action(self, action_id, update_dict):
         if getattr(self.settings, 'AK_TEST', False):
             if str(action_id) in TEST_DATA:
