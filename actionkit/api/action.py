@@ -56,17 +56,17 @@ TEST_DATA = {
             'link': None,
             'mailing': None,
             'opq_id': '',
-            'page': /rest/v1/importpage/12/,
+            'page': '/rest/v1/importpage/12/',
             'referring_mailing': None,
             'referring_user': None,
-            'resource_uri': /rest/v1/importaction/1/,
+            'resource_uri': '/rest/v1/importaction/1/',
             'source': 'initial_ak_import',
             'status': 'complete',
             'subscribed_user': False,
             'taf_emails_sent': None,
             'type': 'Import',
             'updated_at': '2015-09-23T02:21:30',
-            'user': /rest/v1/user/401/
+            'user': '/rest/v1/user/401/'
         }
     },
 }
