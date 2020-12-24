@@ -8,6 +8,24 @@ class AKOrderAPI(ActionKitAPI):
         """
             Get order and billing info
         """
+        if getattr(self.settings, 'AK_TEST', True):
+            if order_id and str(order_id) in TEST_DATA['orders']:
+                order = TEST_DATA['orders'][str(order_id)]
+                user_id = order['user']
+                user_id = user_id.replace('/rest/v1/user/', '')
+                user_id = user_id.replace('/','')
+                user = TEST_DATA['users'][user_id]
+                product = None
+                if len(order['orderdetails']) > 0:
+                    order_details = TEST_DATA['order_details'][order['orderdetails'][0]]
+                    product_id = order_details['product']
+                    product_id = product_id.replace('/rest/v1/product/', '')
+                    product_id = product_id.replace('/','')
+                    product = TEST_DATA['products'][product_id]
+                res = self.test_service_get_order(order, user, product)
+            else:
+                res = self.test_service_get_order(None)
+            return res.data
         result = self.client.get(
             '%s/rest/v1/order/%s' % (
                 self.base_url, order_id))
@@ -35,9 +53,9 @@ class AKOrderAPI(ActionKitAPI):
     def list_orders(self, user_id=False, query_params={}):
         if getattr(self.settings, 'AK_TEST', True):
             if user_id and str(user_id) in TEST_DATA['users']:
-                res = self.test_service_post(TEST_DATA['users'][str(user_id)])
+                res = self.test_service_get_orders(TEST_DATA['users'][str(user_id)])
             else:
-                res = self.test_service_post(None)
+                res = self.test_service_get_orders(None)
             return {'res': res, 'orders': res.orders}
         if user_id:
             query_params['user'] = user_id
@@ -67,7 +85,7 @@ class AKOrderAPI(ActionKitAPI):
         )
         return {'res': result}
 
-    def test_service_post(self, data):
+    def test_service_get_orders(self, data):
         r = requests.Response()
         if data == None:
             r.orders = []
@@ -75,4 +93,16 @@ class AKOrderAPI(ActionKitAPI):
         else:
             r.status_code = 200
             r.orders = data['user']['orders']
+        return r
+
+    def test_service_get_order(self, order, user, product):
+        r = requests.Response()
+        if order == None:
+            r.order = {}
+            r.status_code = 404
+        else:
+            r.status_code = 200
+            r.data = order
+            r.data['user_detail'] = user
+            r.data['products'] = product
         return r

@@ -38,7 +38,7 @@ class AKOrderRecurringAPI(ActionKitAPI):
             '%s/rest/v1/orderrecurring/' % (self.base_url),
             params=query_params
         )
-        rv = {'res': result, 'objects': []}
+        rv = {'res': result, 'orders_recurring': []}
         while result.status_code == 200:
             json = result.json()
             rv['orders_recurring'].extend(json.get('objects', []))
@@ -76,3 +76,13 @@ class AKOrderRecurringAPI(ActionKitAPI):
             'res': res,
             'success': (200 < res.status_code < 400)
         }
+
+    def test_service_get_orders_recurring(self, data):
+        r = requests.Response()
+        if data == None:
+            r.orders_recurring = []
+            r.status_code = 404
+        else:
+            r.status_code = 200
+            r.orders_recurring = data['user']['orders']
+        return r

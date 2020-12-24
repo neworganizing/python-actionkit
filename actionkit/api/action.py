@@ -29,21 +29,19 @@ class AKActionAPI(base.ActionKitAPI):
         """
         if getattr(self.settings, 'AK_TEST', True):
             if action_url and str(action_url) in TEST_DATA['actions']:
-                res = self.test_service_post(TEST_DATA['actions'][action_url])
+                response = self.test_service_post(TEST_DATA['actions'][action_url])
             else:
-                res = self.test_service_post(None)
-            return {'res': res, 'fields': res.action}
+                response = self.test_service_post(None)
+            return {'response': response, 'action': response.action}
         if action_url:
-            result = self.client.get('%s%s' % (self.base_url, action_url))
-
-            if result.status_code == 200:
-                return result.json()
+            response = self.client.get('%s%s' % (self.base_url, action_url))
+            return {'response': response, 'action': response.json()}
         elif action_id:
-            result = self.client.get(
+            response = self.client.get(
                 '%s/rest/v1/action/%s' % (self.base_url, action_id),
                 )
-            if result.status_code == 200:
-                return result.json()
+
+            return {'response': response, 'action': response.json()}
 
     def update_action(self, action_id, update_dict):
         if getattr(self.settings, 'AK_TEST', False):
