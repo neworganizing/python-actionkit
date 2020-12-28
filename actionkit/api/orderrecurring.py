@@ -1,3 +1,4 @@
+import requests
 from actionkit.api.base import ActionKitAPI
 from actionkit.api.test_data import TEST_DATA
 
@@ -8,7 +9,18 @@ class AKOrderRecurringAPI(ActionKitAPI):
             Get recurring donation info and billing info
         """
         if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA['orders_recurring'].get('get_orderrecurring_detail')
+            if orderrecurring_id and str(orderrecurring_id) in TEST_DATA['orders_recurring']:
+                order_recurring = TEST_DATA['orders_recurring'][str(orderrecurring_id)]
+                user_id = order_recurring['user']
+                user_id = user_id.replace('/rest/v1/user/', '')
+                user_id = user_id.replace('/','')
+                order_id = order_recurring['order']
+                order_id = order_id.replace('/rest/v1/order/', '')
+                order_id = order_id.replace('/','')
+                order = TEST_DATA['orders'][order_id]
+                # user = TEST_DATA['users'][user_id]['user']
+                res = self.test_service_get_order_recurring(order_recurring, order)
+                return res.data
         result = self.client.get(
             '%s/rest/v1/orderrecurring/%s' % (
                 self.base_url, orderrecurring_id))
@@ -85,4 +97,15 @@ class AKOrderRecurringAPI(ActionKitAPI):
         else:
             r.status_code = 200
             r.orders_recurring = data['user']['orders']
+        return r
+
+    def test_service_get_order_recurring(self, order_recurring, order):
+        r = requests.Response()
+        if order_recurring == None:
+            r.order_recurring = {}
+            r.status_code = 404
+        else:
+            r.status_code = 200
+            order_recurring['order'] = order
+            r.data = order_recurring
         return r

@@ -15,16 +15,17 @@ class AKOrderAPI(ActionKitAPI):
                 user_id = user_id.replace('/rest/v1/user/', '')
                 user_id = user_id.replace('/','')
                 user = TEST_DATA['users'][user_id]
-                product = None
+                products = []
                 if len(order['orderdetails']) > 0:
-                    order_details = TEST_DATA['order_details'][order['orderdetails'][0]]
-                    product_id = order_details['product']
-                    product_id = product_id.replace('/rest/v1/product/', '')
-                    product_id = product_id.replace('/','')
-                    product = TEST_DATA['products'][product_id]
-                res = self.test_service_get_order(order, user, product)
+                    for details in order['orderdetails']:
+                        orderdetail = TEST_DATA['orderdetails'][details]
+                        product_id = orderdetail['product']
+                        product_id = product_id.replace('/rest/v1/product/', '')
+                        product_id = product_id.replace('/','')
+                        products.append(TEST_DATA['products'][product_id])
+                res = self.test_service_get_order(order, user, products)
             else:
-                res = self.test_service_get_order(None)
+                res = self.test_service_get_order(None, None, None)
             return res.data
         result = self.client.get(
             '%s/rest/v1/order/%s' % (
@@ -95,14 +96,14 @@ class AKOrderAPI(ActionKitAPI):
             r.orders = data['user']['orders']
         return r
 
-    def test_service_get_order(self, order, user, product):
+    def test_service_get_order(self, order, user, products):
         r = requests.Response()
         if order == None:
             r.order = {}
             r.status_code = 404
         else:
             r.status_code = 200
+            order['products'] = products
+            order['user_detail'] = user
             r.data = order
-            r.data['user_detail'] = user
-            r.data['products'] = product
         return r
