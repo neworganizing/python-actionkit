@@ -20,7 +20,7 @@ class AKOrderRecurringAPI(ActionKitAPI):
                 order = TEST_DATA['orders'][order_id]
                 # user = TEST_DATA['users'][user_id]['user']
                 res = self.test_service_get_order_recurring(order_recurring, order)
-                return res.data
+                return res.object
         result = self.client.get(
             '%s/rest/v1/orderrecurring/%s' % (
                 self.base_url, orderrecurring_id))
@@ -43,17 +43,19 @@ class AKOrderRecurringAPI(ActionKitAPI):
 
     def list_orderrecurring(self, user_id=False, query_params={}):
         if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA['orders_recurring'].get(str(user_id))
+            orders_recurring = TEST_DATA['orders_recurring'].get(str(user_id))
+            response = self.test_service_get_orders_recurring(orders_recurring)
+            return {'objects':response.objects['orders_recurring']}
         if user_id:
             query_params['user'] = user_id
         result = self.client.get(
             '%s/rest/v1/orderrecurring/' % (self.base_url),
             params=query_params
         )
-        rv = {'res': result, 'orders_recurring': []}
+        rv = {'res': result, 'objects': []}
         while result.status_code == 200:
             json = result.json()
-            rv['orders_recurring'].extend(json.get('objects', []))
+            rv['objects'].extend(json.get('objects', []))
             next_page = json.get('meta', None).get('next', None)
             if next_page:
                 result = self.client.get('%s%s' % (self.base_url, next_page))
@@ -92,20 +94,20 @@ class AKOrderRecurringAPI(ActionKitAPI):
     def test_service_get_orders_recurring(self, data):
         r = requests.Response()
         if data == None:
-            r.orders_recurring = []
+            r.objects = []
             r.status_code = 404
         else:
             r.status_code = 200
-            r.orders_recurring = data['user']['orders']
+            r.objects = data
         return r
 
     def test_service_get_order_recurring(self, order_recurring, order):
         r = requests.Response()
         if order_recurring == None:
-            r.order_recurring = {}
+            r.object = {}
             r.status_code = 404
         else:
             r.status_code = 200
             order_recurring['order'] = order
-            r.data = order_recurring
+            r.object = order_recurring
         return r

@@ -57,17 +57,17 @@ class AKOrderAPI(ActionKitAPI):
                 res = self.test_service_get_orders(TEST_DATA['users'][str(user_id)])
             else:
                 res = self.test_service_get_orders(None)
-            return {'res': res, 'orders': res.orders}
+            return {'res': res, 'objects': res.objects}
         if user_id:
             query_params['user'] = user_id
         result = self.client.get(
             '%s/rest/v1/order/' % (self.base_url),
             params = query_params
         )
-        rv = {'res': result, 'orders': []}
+        rv = {'res': result, 'objects': []}
         while result.status_code == 200:
             json = result.json()
-            rv['orders'].extend(json.get('objects', []))
+            rv['objects'].extend(json.get('objects', []))
             next_page = json.get('meta', None).get('next', None)
             if next_page:
                 result = self.client.get('%s%s' % (self.base_url, next_page))
@@ -89,17 +89,17 @@ class AKOrderAPI(ActionKitAPI):
     def test_service_get_orders(self, data):
         r = requests.Response()
         if data == None:
-            r.orders = []
+            r.objects = []
             r.status_code = 404
         else:
             r.status_code = 200
-            r.orders = data['user']['orders']
+            r.objects = data['user']['orders']
         return r
 
     def test_service_get_order(self, order, user, products):
         r = requests.Response()
         if order == None:
-            r.order = {}
+            r.object = {}
             r.status_code = 404
         else:
             r.status_code = 200
