@@ -12,6 +12,7 @@ class AKTransactionAPI(ActionKitAPI):
             transaction = TEST_DATA['transactions'][str(transaction_id)]
             res = self.test_service_get_transaction(transaction)
             return res.data
+            return TEST_DATA.get('get_orderrecurring_detail')
         result = self.client.get(
             '%s/rest/v1/transaction/%s' % (
                 self.base_url, transaction_id))
@@ -27,8 +28,6 @@ class AKTransactionAPI(ActionKitAPI):
             '%s/rest/v1/transaction/%s/reverse/' % (self.base_url, transaction_id)
         )
         return {'res': result}
-
-
     def test_service_get_transaction(self, transaction):
         r = requests.Response()
         if transaction == None:
