@@ -91,6 +91,7 @@ class AKUserAPI(base.ActionKitAPI):
                 return TEST_DATA['phones'].get(url)
             else:
                 return TEST_DATA['phones'].get(str(phone_id))
+                return TEST_DATA.get(str(phone_id))
         if not url:
             #the '/' at the end is IMPORTANT!
             url = '/rest/v1/phone/%s/' % phone_id
