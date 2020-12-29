@@ -3,6 +3,7 @@ import re
 import requests
 
 from actionkit.api import base
+from actionkit.api.test_data import TEST_DATA
 
 class AKActionAPI(base.ActionKitAPI):
 
@@ -44,49 +45,29 @@ class AKActionAPI(base.ActionKitAPI):
 
     def update_action(self, action_id, update_dict):
         if getattr(self.settings, 'AK_TEST', False):
-            if str(action_id) in TEST_DATA:
-                res = self.test_service_post(TEST_DATA[str(action_id)])
+            if str(action_id) in TEST_DATA['actions']:
+                res = self.test_service_post(TEST_DATA['actions'][str(action_id)])
             else:
                 res = self.test_service_post(None)
             return {'res': res, 'action': res.action}
+
+        # Get the action by its ID
+        get_response = self.client.get(
+            '%s/rest/v1/action/%s/' % (self.base_url, action_id)
+        )
+        resource_uri = get_response.json()['resource_uri']
         response = self.client.patch(
-            #the '/' at the end is IMPORTANT!
-            '%s/rest/v1/action/%s/' % (self.base_url, action_id),
-            data=json.dumps(update_dict))
-        if response.status_code == 202:
-            return "Successfully changed source to {0} on action #{1}".format(
-                source,
-                action_id
-            )
+            '%s%s' % (self.base_url, resource_uri),
+            data=json.dumps({'fields': update_dict})
+        )
         return self._http_return(response)
 
-TEST_DATA = {
-    '123123a': { #fake actionid
-        'res': 200,
-         #some fields removed for brevity.
-         # add them back if you need them for testing
-        'action': {
-            'akid': '.401.-9Mop1',
-            'created_at': '1999-10-13T17:07:00',
-            'created_user': False,
-            'fields': {},
-            'id': 1,
-            'ip_address': None,
-            'is_forwarded': False,
-            'link': None,
-            'mailing': None,
-            'opq_id': '',
-            'page': '/rest/v1/importpage/12/',
-            'referring_mailing': None,
-            'referring_user': None,
-            'resource_uri': '/rest/v1/importaction/1/',
-            'source': 'initial_ak_import',
-            'status': 'complete',
-            'subscribed_user': False,
-            'taf_emails_sent': None,
-            'type': 'Import',
-            'updated_at': '2015-09-23T02:21:30',
-            'user': '/rest/v1/user/401/'
-        }
-    },
-}
+    def test_service_post(self, data):
+        r = requests.Response()
+        if data == None:
+            r.action = {}
+            r.status_code = 404
+        else:
+            r.status_code = 200
+            r.action = data['action']
+        return r

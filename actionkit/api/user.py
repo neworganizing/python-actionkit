@@ -3,6 +3,10 @@ import json
 import re
 import requests
 import sys
+from django.conf import settings
+import ganymede.settings
+from actionkit.api.test_data import TEST_DATA
+
 try:
     from six import StringIO
 except ImportError:
@@ -34,7 +38,7 @@ class AKUserAPI(base.ActionKitAPI):
 
     def create_user(self, user_dict):
         if getattr(self.settings, 'AK_TEST', False):
-            return TEST_DATA.get(user_dict.get('email', 'create_user'))
+            return TEST_DATA['users'].get(user_dict.get('email', 'create_user'))
         res = self.client.post(
             '%s/rest/v1/user/' % self.base_url,
             json=user_dict)
@@ -44,9 +48,9 @@ class AKUserAPI(base.ActionKitAPI):
         return rv
 
     def get_user(self, user_id):
-        if getattr(self.settings, 'AK_TEST', False):
-            if str(user_id) in TEST_DATA:
-                res = self.test_service_post(TEST_DATA[str(user_id)])
+        if getattr(self.settings, 'AK_TEST', True):
+            if str(user_id) in TEST_DATA['users']:
+                res = self.test_service_post(TEST_DATA['users'][str(user_id)])
             else:
                 res = self.test_service_post(None)
             return {'res': res, 'user': res.user}
@@ -58,8 +62,8 @@ class AKUserAPI(base.ActionKitAPI):
 
     def update_user(self, user_id, update_dict):
         if getattr(self.settings, 'AK_TEST', False):
-            if str(user_id) in TEST_DATA:
-                res = self.test_service_post(TEST_DATA[str(user_id)])
+            if str(user_id) in TEST_DATA['users']:
+                res = self.test_service_post(TEST_DATA['users'][str(user_id)])
             else:
                 res = self.test_service_post(None)
             return {'res': res, 'user': res.user}
@@ -82,11 +86,11 @@ class AKUserAPI(base.ActionKitAPI):
 
     def get_phone(self, phone_id=None, url=None):
         assert(phone_id or url)
-        if getattr(self.settings, 'AK_TEST', False):
+        if getattr(self.settings, 'AK_TEST', True):
             if url:
-                return TEST_DATA.get(url)
+                return TEST_DATA['phones'].get(url)
             else:
-                print(phone_id)
+                return TEST_DATA['phones'].get(str(phone_id))
                 return TEST_DATA.get(str(phone_id))
         if not url:
             #the '/' at the end is IMPORTANT!
@@ -172,68 +176,3 @@ class AKUserAPI(base.ActionKitAPI):
             r.status_code = 200
             r.user = data['user']
         return r
-
-TEST_DATA = {
-    'create_user': {
-        'res': None,
-        'id': 1234567890123,
-    },
-    'example@example.com': {
-        'res': None,
-        'id': 1234567890123,
-    },
-    '/rest/v1/phone/8675309867530/': {
-        'res': None,
-        'phone': {
-            "created_at": "2015-11-24T21:07:58",
-            "id": 8675309867530,
-            "normalized_phone": "5558675309",
-            "phone": "5558675309",
-            "resource_uri": "/rest/v1/phone/8675309867530/",
-            "source": "user",
-            "type": "home",
-            "updated_at": "2016-03-29T16:41:10",
-            "user": "/rest/v1/user/1234567890123/"
-        }
-    },
-    '8675309867530': {
-        'res': 200,
-        'phone': {
-            "created_at": "2015-11-24T21:07:58",
-            "id": 8675309867530,
-            "normalized_phone": "5558675309",
-            "phone": "5558675309",
-            "resource_uri": "/rest/v1/phone/8675309867530/",
-            "source": "user",
-            "type": "home",
-            "updated_at": "2016-03-29T16:41:10",
-            "user": "/rest/v1/user/1234567890123/"
-        }
-    },
-    '1234567890123': { #fake userid
-        'res': 200,
-         #some fields removed for brevity.
-         # add them back if you need them for testing
-        'user': {
-            "address1": "123 Main St.",
-            "address2": "",
-            "city": "Cleveland",
-            "country": "United States",
-            "created_at": "2015-11-18T16:22:31",
-            "email": "example@example.com",
-            "fields": {},
-            "first_name": "Joey",
-            "last_name": "AndMe",
-            "middle_name": "Annabelle",
-            "id": 1234567890123,
-            "phones": [
-                "/rest/v1/phone/8675309867530/"
-            ],
-            "postal": "44123",
-            "region": "OH",
-            "state": "OH",
-            "updated_at": "2016-07-11T18:19:26",
-            "zip": "44123",
-        }
-    },
-}
