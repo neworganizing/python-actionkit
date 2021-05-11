@@ -84,6 +84,10 @@ class AKOrderAPI(ActionKitAPI):
             '%s/rest/v1/order/%s/reverse/' % (self.base_url, order_id),
             params = action_dictionary
         )
+        print(result)
+        print(result.status_code)
+        if result.status_code >= 400:
+            return {'res': 'Unable to process request'}
         return {'res': result}
 
     def test_service_get_orders(self, data):

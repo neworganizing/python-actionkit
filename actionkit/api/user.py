@@ -22,12 +22,12 @@ class AKUserAPI(base.ActionKitAPI):
         send a dict, or a single name, value pair
         """
         if not hasattr(name_or_dict, 'get') and value:
-            name_or_dict = { name_or_dict: value}
+            name_or_dict = {name_or_dict: value}
 
         res = self.client.patch(
-            #the '/' at the end is IMPORTANT!
+            # the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id),
-            data=json.dumps({ 'fields': name_or_dict }))
+            data=json.dumps({'fields': name_or_dict}))
         return self._http_return(res)
 
     def add_allowed_usertag(self, userfield_name):
@@ -55,12 +55,13 @@ class AKUserAPI(base.ActionKitAPI):
                 res = self.test_service_post(None)
             return {'res': res, 'user': res.user}
         res = self.client.get(
-            #the '/' at the end is IMPORTANT!
+            # the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id))
         return {'res': res,
                 'user': res.json() if res.status_code == 200 else None}
 
     def update_user(self, user_id, update_dict):
+        print(json.dumps(update_dict))
         if getattr(self.settings, 'AK_TEST', False):
             if str(user_id) in TEST_DATA['users']:
                 res = self.test_service_post(TEST_DATA['users'][str(user_id)])
@@ -68,7 +69,7 @@ class AKUserAPI(base.ActionKitAPI):
                 res = self.test_service_post(None)
             return {'res': res, 'user': res.user}
         res = self.client.patch(
-            #the '/' at the end is IMPORTANT!
+            # the '/' at the end is IMPORTANT!
             '%s/rest/v1/user/%s/' % (self.base_url, user_id),
             data=json.dumps(update_dict))
         return self._http_return(res)
@@ -77,11 +78,13 @@ class AKUserAPI(base.ActionKitAPI):
         res = ''
         search_string = '?'
         search_array = []
-        res = self.client.get('%s/rest/v1/user/' % (self.base_url), params=query_params)
+        res = self.client.get('%s/rest/v1/user/' %
+                              (self.base_url), params=query_params)
         return {'res': res, 'users': res.json() if res.status_code == 200 else None}
 
     def add_phone(self, user_id, phone, phone_type):
-        res = self.client.post('%s/rest/v1/phone/' % (self.base_url), json={'user': user_id, 'phone_type': phone_type, 'phone': phone})
+        res = self.client.post('%s/rest/v1/phone/' % (self.base_url),
+                               json={'user': user_id, 'phone_type': phone_type, 'phone': phone})
         return {'res': res, phone: res.json() if res.status_code == 200 else None}
 
     def get_phone(self, phone_id=None, url=None):
@@ -91,9 +94,8 @@ class AKUserAPI(base.ActionKitAPI):
                 return TEST_DATA['phones'].get(url)
             else:
                 return TEST_DATA['phones'].get(str(phone_id))
-                return TEST_DATA.get(str(phone_id))
         if not url:
-            #the '/' at the end is IMPORTANT!
+            # the '/' at the end is IMPORTANT!
             url = '/rest/v1/phone/%s/' % phone_id
         res = self.client.get(
             '%s%s' % (self.base_url, url))
@@ -107,7 +109,7 @@ class AKUserAPI(base.ActionKitAPI):
             return {'res': res}
         else:
             res = self.client.patch(
-                #the '/' at the end is IMPORTANT!
+                # the '/' at the end is IMPORTANT!
                 '%s/rest/v1/phone/%s/' % (self.base_url, phone_id),
                 data=json.dumps(update_dict))
             return {'res': res, 'phone': res.json() if res.status_code == 200 else None}
@@ -142,7 +144,7 @@ class AKUserAPI(base.ActionKitAPI):
         Note: If you get a 500 error, try sending a much smaller file (say, one row),
         which is more likely to return the proper 400 with a useful error message
         """
-        #base.py defaults to JSON, but this has to be form/multi-part....
+        # base.py defaults to JSON, but this has to be form/multi-part....
         upload_client = self.get_client({'accepts': 'application/json'})
         res = upload_client.post(
             '%s/rest/v1/upload/' % self.base_url,
@@ -161,12 +163,13 @@ class AKUserAPI(base.ActionKitAPI):
         outcsv.writerow(headers)
         if sys.version_info.major >= 3:
             outcsv.writerows(rows)
-        else: #this is the nightmare python3 has saved us from:
+        else:  # this is the nightmare python3 has saved us from:
             for row in rows:
                 outcsv.writerow([(s.encode("utf-8") if isinstance(s, unicode) else s)
                                  for s in row])
         return self.bulk_upload(import_page, StringIO(csv_file.getvalue()),
                                 autocreate_user_fields=autocreate_user_fields)
+
     def test_service_post(self, data):
         r = requests.Response()
         if data == None:
